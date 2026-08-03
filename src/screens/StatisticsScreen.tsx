@@ -4,7 +4,7 @@ import 'react-datepicker/dist/react-datepicker.css'
 import { inventoryApi } from '../api/client'
 import { useAppStore } from '../store/appStore'
 import dayjs from 'dayjs'
-import { Download, CalendarClock, RefreshCw, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Download, CalendarClock, RefreshCw, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight, Wallet, ShoppingCart, Percent, Package } from 'lucide-react'
 import { t } from '../i18n'
 import { formatMoney } from '../styles/shared'
 import type { InventorySummary } from '../types'
@@ -97,23 +97,97 @@ const STAT_VALUE: React.CSSProperties = {
 }
 
 const s = {
-  container: { maxWidth: 720, margin: '0 auto' },
+  container: { maxWidth: 780, margin: '0 auto' },
+  pageHeader: { display: 'flex' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, gap: 12, marginBottom: 18 },
+  pageTitle: { fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: -0.3, color: 'var(--color-text)' },
+  pageSubtitle: { fontSize: 13, color: 'var(--color-text-secondary)', margin: '2px 0 0' },
+  primaryBtn: {
+    display: 'flex' as const, alignItems: 'center' as const, gap: 6, padding: '9px 14px', borderRadius: 10,
+    border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    transition: 'opacity 0.15s',
+  },
+  secondaryBtn: {
+    display: 'flex' as const, alignItems: 'center' as const, gap: 6, padding: '9px 14px', borderRadius: 10,
+    border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+    color: 'var(--color-text)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    transition: 'all 0.15s',
+  },
+  tabsRow: { display: 'flex' as const, alignItems: 'center' as const, gap: 10, marginBottom: 14 },
   headerRow: { display: 'flex' as const, alignItems: 'center' as const, gap: 10, marginBottom: 16 },
   headerFlex: { flex: 1 },
   title: { fontSize: 0, margin: 0 } as React.CSSProperties,
-  periodTabs: { display: 'flex' as const, background: 'var(--color-primary)', borderRadius: 12, padding: 3 },
+  periodTabs: {
+    flex: 1, display: 'flex' as const, background: 'var(--color-surface)', borderRadius: 12, padding: 3,
+    border: '1px solid var(--color-border)',
+  },
   periodTab: (active: boolean): React.CSSProperties => ({
-    flex: 1, padding: '8px 0', border: 'none', borderRadius: 10,
-    background: active ? 'rgba(255,255,255,0.2)' : 'transparent',
-    color: active ? '#fff' : 'rgba(255,255,255,0.7)',
+    flex: 1, padding: '9px 0', border: 'none', borderRadius: 9,
+    background: active ? 'var(--color-primary)' : 'transparent',
+    color: active ? '#fff' : 'var(--color-text-secondary)',
     fontWeight: active ? 700 : 600, fontSize: 13, cursor: 'pointer',
+    transition: 'all 0.2s',
   }),
   refreshBtn: {
-    width: 38, height: 38, borderRadius: 19, border: 'none',
-    background: 'var(--color-primary)', color: '#fff',
+    width: 42, height: 42, borderRadius: 12, border: '1px solid var(--color-border)',
+    background: 'var(--color-surface)', color: 'var(--color-text)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
     transition: 'opacity 0.2s',
   },
+  hero: {
+    position: 'relative' as const, overflow: 'hidden' as const,
+    background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 55%, #4c1d95 100%)',
+    borderRadius: 18, padding: '24px 26px', marginBottom: 14,
+  },
+  heroCircle1: { position: 'absolute' as const, top: -50, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'rgba(255,255,255,0.07)' },
+  heroCircle2: { position: 'absolute' as const, bottom: -70, left: 80, width: 170, height: 170, borderRadius: '50%', background: 'rgba(255,255,255,0.05)' },
+  heroLabel: {
+    position: 'relative' as const, display: 'flex' as const, alignItems: 'center' as const, gap: 8,
+    fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)', textTransform: 'uppercase' as const, letterSpacing: 1,
+  },
+  heroValue: { position: 'relative' as const, fontSize: 34, fontWeight: 800, color: '#fff', marginTop: 8, letterSpacing: -0.5, fontVariantNumeric: 'tabular-nums' as const },
+  heroChips: { position: 'relative' as const, display: 'flex' as const, gap: 8, marginTop: 14, flexWrap: 'wrap' as const },
+  heroChip: { padding: '5px 12px', borderRadius: 20, background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: 12, fontWeight: 600 },
+  kpiGrid: { display: 'grid' as const, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 14 },
+  kpiCard: {
+    background: 'var(--color-surface)', borderRadius: 14, padding: 16, border: '1px solid var(--color-border)',
+    display: 'flex' as const, alignItems: 'center' as const, gap: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+  },
+  kpiIcon: { width: 42, height: 42, borderRadius: 12, display: 'flex' as const, alignItems: 'center' as const, justifyContent: 'center' as const, flexShrink: 0 },
+  kpiLabel: { fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 2 },
+  kpiValue: { fontSize: 18, fontWeight: 800, fontVariantNumeric: 'tabular-nums' as const, letterSpacing: -0.3 },
+  detailGrid: { display: 'grid' as const, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 } as React.CSSProperties,
+  detailItem: { padding: 12, borderRadius: 10, background: 'rgba(127,127,127,0.06)', border: '1px solid var(--color-border)' },
+  detailItemLabel: { fontSize: 11, color: 'var(--color-text-secondary)', margin: 0, marginBottom: 3 },
+  detailItemValue: (highlight?: boolean): React.CSSProperties => ({
+    fontSize: 16, fontWeight: 700, margin: 0, fontVariantNumeric: 'tabular-nums',
+    color: highlight ? 'var(--color-primary)' : 'var(--color-text)',
+  }),
+  rankItem: {
+    display: 'flex' as const, alignItems: 'center' as const, gap: 12,
+    padding: '11px 0',
+  },
+  rankBadge: (isBlacklist: boolean, index: number): React.CSSProperties => ({
+    width: 30, height: 30, borderRadius: 15, display: 'flex',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    background: isBlacklist ? 'rgba(239,68,68,0.13)' : index < 3 ? 'var(--color-primary)' : 'var(--color-border)',
+    color: (isBlacklist || index < 3) ? '#fff' : 'var(--color-text-secondary)',
+    fontSize: 12, fontWeight: 700,
+  }),
+  rankNameRow: { display: 'flex' as const, justifyContent: 'space-between' as const, gap: 8, alignItems: 'center' as const },
+  rankInfo: { flex: 1, minWidth: 0 },
+  rankName: { fontSize: 14, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  rankMetrics: { display: 'flex' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, marginTop: 2 },
+  rankSub: { fontSize: 12, color: 'var(--color-text-secondary)' },
+  rankProfit: (isBlacklist: boolean, sold: number, profit: number): React.CSSProperties => ({
+    fontSize: 13, fontWeight: 700,
+    color: profit < 0 ? 'var(--color-danger)' : sold <= 0 ? 'var(--color-text-tertiary)' : isBlacklist ? 'var(--color-warning)' : 'var(--color-primary)',
+  }),
+  rankBarTrack: { height: 4, borderRadius: 2, background: 'var(--color-border)', marginTop: 6, overflow: 'hidden' as const },
+  rankBarFill: (ratio: number, isBlacklist: boolean): React.CSSProperties => ({
+    width: `${ratio * 100}%`, height: '100%', borderRadius: 2,
+    background: isBlacklist ? 'var(--color-danger)' : 'var(--color-primary)',
+    transition: 'width 0.4s ease',
+  }),
   dateNav: {
     display: 'flex' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const,
     gap: 12, marginTop: 0, marginBottom: 12, padding: '8px 12px',
@@ -148,25 +222,6 @@ const s = {
   cardSubtitle: { fontSize: 11, color: 'var(--color-text-secondary)', marginTop: -8, marginBottom: 12 },
   cardBlacklist: { ...CARD, borderColor: 'rgba(239,68,68,0.33)', background: 'rgba(239,68,68,0.03)' },
   noDataText: { fontSize: 13, color: 'var(--color-text-tertiary)', textAlign: 'center' as const, padding: '12px 0', margin: 0 },
-  rankItem: {
-    display: 'flex' as const, alignItems: 'center' as const, gap: 12,
-    padding: '10px 0', borderBottom: '1px solid var(--color-border)',
-  },
-  rankBadge: (isBlacklist: boolean, index: number): React.CSSProperties => ({
-    width: 28, height: 28, borderRadius: 14, display: 'flex',
-    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-    background: isBlacklist ? 'rgba(239,68,68,0.13)' : index < 3 ? 'var(--color-primary)' : 'var(--color-border)',
-    color: (isBlacklist || index < 3) ? '#fff' : 'var(--color-text-secondary)',
-    fontSize: 12, fontWeight: 700,
-  }),
-  rankInfo: { flex: 1, minWidth: 0 },
-  rankName: { fontSize: 14, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
-  rankMetrics: { display: 'flex' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, marginTop: 2 },
-  rankSub: { fontSize: 12, color: 'var(--color-text-secondary)' },
-  rankProfit: (isBlacklist: boolean, sold: number, profit: number): React.CSSProperties => ({
-    fontSize: 13, fontWeight: 700,
-    color: profit < 0 ? 'var(--color-danger)' : sold <= 0 ? 'var(--color-text-tertiary)' : isBlacklist ? 'var(--color-warning)' : 'var(--color-primary)',
-  }),
   showMoreBtn: {
     marginTop: 12, padding: '10px 0', borderRadius: 8, border: '1px solid rgba(139,92,246,0.19)',
     background: 'transparent', color: 'var(--color-primary)', fontSize: 13, fontWeight: 700, cursor: 'pointer', width: '100%',
@@ -425,20 +480,26 @@ export function StatisticsScreen() {
     await fetchAllTime(from, to)
   }, [allTimeFrom, allTimeTo, fetchAllTime])
 
-  function renderRankItem(item: ProductRankItem, index: number, isBlacklist: boolean) {
+  function renderRankItem(item: ProductRankItem, index: number, isBlacklist: boolean, maxSold = 1) {
     const unsold = item.sold <= 0
+    const ratio = item.sold > 0 ? Math.min(item.sold / maxSold, 1) : 0
     return (
       <div key={item.id} style={s.rankItem}>
         <div style={s.rankBadge(isBlacklist, index)}>
           {index + 1}
         </div>
         <div style={s.rankInfo}>
-          <div style={s.rankName}>{item.name}</div>
+          <div style={s.rankNameRow}>
+            <div style={s.rankName}>{item.name}</div>
+            <span style={s.rankProfit(isBlacklist, item.sold, item.profit)}>{formatMoney(item.profit)}</span>
+          </div>
           <div style={s.rankMetrics}>
             <span style={{ ...s.rankSub, ...(unsold ? { color: 'var(--color-text-tertiary)' } : {}) } as React.CSSProperties}>
               {unsold ? t('notSoldInPeriod') || 'Sotilmagan' : `${item.sold} dona`}
             </span>
-            <span style={s.rankProfit(isBlacklist, item.sold, item.profit)}>{formatMoney(item.profit)}</span>
+          </div>
+          <div style={s.rankBarTrack}>
+            <div style={s.rankBarFill(ratio, isBlacklist)} />
           </div>
         </div>
       </div>
@@ -461,7 +522,7 @@ export function StatisticsScreen() {
         </div>
         {subtitle ? <p style={s.cardSubtitle}>{subtitle}</p> : null}
         {displayItems.length > 0 ? (
-          displayItems.map((item, i) => renderRankItem(item, i, isBlacklist))
+          displayItems.map((item, i) => renderRankItem(item, i, isBlacklist, rankItems[0]?.sold))
         ) : (
           <p style={s.noDataText}>{t('noProductsPeriod') || 'Bu davrda mahsulot yo\'q'}</p>
         )}
@@ -476,19 +537,35 @@ export function StatisticsScreen() {
 
   return (
     <div style={s.container}>
-      {/* Header */}
-      <div style={s.headerRow}>
-        <div style={s.headerFlex}>
-          <div style={s.periodTabs}>
-            {PERIODS.map((p) => (
-              <button key={p} onClick={() => setPeriod(p)} style={s.periodTab(period === p)}>
-                {PERIOD_LABELS[p]}
-              </button>
-            ))}
-          </div>
+      {/* Page header */}
+      <div style={s.pageHeader}>
+        <div>
+          <h2 style={s.pageTitle}>{t('statistics')}</h2>
+          <p style={s.pageSubtitle}>{periodLabel}</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={handleDownload} style={s.secondaryBtn}>
+            <Download size={16} />
+            {t('downloadStatistics') || 'Yuklab olish'}
+          </button>
+          <button onClick={handleOpenAllTime} style={s.primaryBtn}>
+            <CalendarClock size={16} />
+            {t('allTimeStatistics') || 'Barcha vaqt'}
+          </button>
+        </div>
+      </div>
+
+      {/* Period tabs + refresh */}
+      <div style={s.tabsRow}>
+        <div style={s.periodTabs}>
+          {PERIODS.map((p) => (
+            <button key={p} onClick={() => setPeriod(p)} style={s.periodTab(period === p)}>
+              {PERIOD_LABELS[p]}
+            </button>
+          ))}
         </div>
         <button onClick={handleRefresh} style={{ ...s.refreshBtn, opacity: loading ? 0.6 : 1 }}>
-          <RefreshCw size={18} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+          <RefreshCw size={17} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
         </button>
       </div>
 
@@ -506,18 +583,6 @@ export function StatisticsScreen() {
         <button onClick={handleNext} style={s.navBtn}><ChevronRight size={18} /></button>
       </div>
 
-      {/* Toolbar */}
-      <div style={s.toolbar}>
-        <button onClick={handleDownload} style={s.toolbarBtn}>
-          <Download size={16} />
-          {t('downloadStatistics') || 'Yuklab olish'}
-        </button>
-        <button onClick={handleOpenAllTime} style={s.toolbarBtn}>
-          <CalendarClock size={16} />
-          {t('allTimeStatistics') || 'Barcha vaqt'}
-        </button>
-      </div>
-
       {/* Loading */}
       {loading && (
         <div style={s.spinnerWrap}>
@@ -529,34 +594,58 @@ export function StatisticsScreen() {
       {/* Content */}
       {!loading && (
         <>
-          {/* StatsSummaryCard */}
-          <div style={CARD}>
-            <p style={{ ...STAT_LABEL, fontSize: 13 }}>{t('totalRevenue')}</p>
-            <div style={s.mainKPIContainer}>
-              <p style={s.mainKPIValue}>{formatMoney(totals.revenue)}</p>
+          {/* Hero */}
+          <div style={s.hero}>
+            <div style={s.heroCircle1} />
+            <div style={s.heroCircle2} />
+            <div style={s.heroLabel}><Wallet size={15} /> {t('totalRevenue') || 'Jami tushum'}</div>
+            <div style={s.heroValue}>{formatMoney(totals.revenue)}</div>
+            <div style={s.heroChips}>
+              <span style={s.heroChip}>{t('soldPieces') || 'Sotilgan dona'}: {totals.sold}</span>
+              <span style={s.heroChip}>{t('marginPercent') || 'Marja foizi'}: {margin}%</span>
             </div>
-            <div style={s.statsGrid}>
-              <StatItem label={t('soldPieces') || 'Sotilgan dona'} value={totals.sold} />
-              <StatItem label={t('netProfit') || 'Sof foyda'} value={formatMoney(totals.profit)} highlight />
-              <StatItem label={t('marginPercent') || 'Marja foizi'} value={`${margin}%`} />
-            </div>
+          </div>
+
+          {/* KPI cards */}
+          <div style={s.kpiGrid}>
+            {[
+              { icon: <TrendingUp size={18} />, label: t('netProfit') || 'Sof foyda', value: formatMoney(totals.profit), color: 'var(--color-primary)' },
+              { icon: <ShoppingCart size={18} />, label: t('soldPieces') || 'Sotilgan dona', value: String(totals.sold), color: 'var(--color-success)' },
+              { icon: <Percent size={18} />, label: t('marginPercent') || 'Marja foizi', value: `${margin}%`, color: '#8b5cf6' },
+            ].map((item, i) => (
+              <div key={i} style={s.kpiCard}>
+                <div style={{ ...s.kpiIcon, background: `${item.color}1a`, color: item.color }}>{item.icon}</div>
+                <div>
+                  <div style={s.kpiLabel}>{item.label}</div>
+                  <div style={s.kpiValue}>{item.value}</div>
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* OverallRangeCard */}
           {overallTotals && (
             <div style={CARD}>
-              <div style={{ marginBottom: 12 }}>
-                <p style={{ ...STAT_LABEL, fontSize: 13 }}>{periodLabel} - {t('totalRevenueLabel') || 'Umumiy'}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <Package size={17} color="var(--color-primary)" />
+                <p style={{ ...STAT_LABEL, fontSize: 13, margin: 0 }}>{periodLabel} - {t('totalRevenueLabel') || 'Umumiy'}</p>
               </div>
-              <div style={s.statsGrid}>
-                <StatItem label={t('totalSellablePieces')} value={overallTotals.sellableItems} />
-                <StatItem label={t('soldPieces') || 'Sotilgan dona'} value={overallTotals.soldItems} />
-                <StatItem label={t('totalSellValue')} value={formatMoney(overallTotals.sellableValue)} />
-                <StatItem label={t('soldValue')} value={formatMoney(overallTotals.earnedRevenue)} />
-                <StatItem label={t('potentialProfit')} value={formatMoney(overallTotals.possibleProfit)} highlight />
-                <StatItem label={t('earnedProfit')} value={formatMoney(overallTotals.earnedProfit)} highlight />
-                <StatItem label={t('remainingPieces')} value={overallTotals.remainingItems} />
-                <StatItem label={t('remainingStockValue')} value={formatMoney(overallTotals.stockValue)} />
+              <div style={s.detailGrid}>
+                {[
+                  { label: t('totalSellablePieces'), value: overallTotals.sellableItems },
+                  { label: t('soldPieces') || 'Sotilgan dona', value: overallTotals.soldItems },
+                  { label: t('totalSellValue'), value: formatMoney(overallTotals.sellableValue) },
+                  { label: t('soldValue'), value: formatMoney(overallTotals.earnedRevenue) },
+                  { label: t('potentialProfit'), value: formatMoney(overallTotals.possibleProfit), highlight: true },
+                  { label: t('earnedProfit'), value: formatMoney(overallTotals.earnedProfit), highlight: true },
+                  { label: t('remainingPieces'), value: overallTotals.remainingItems },
+                  { label: t('remainingStockValue'), value: formatMoney(overallTotals.stockValue) },
+                ].map((item, i) => (
+                  <div key={i} style={s.detailItem}>
+                    <p style={s.detailItemLabel}>{item.label}</p>
+                    <p style={s.detailItemValue(!!item.highlight)}>{item.value}</p>
+                  </div>
+                ))}
               </div>
             </div>
           )}

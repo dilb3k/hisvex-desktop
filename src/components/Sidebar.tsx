@@ -34,6 +34,9 @@ const iconBtn: React.CSSProperties = {
   transition: 'all 0.2s',
 }
 
+const getInitials = (name: string) =>
+  name.split(/[\s_]+/).filter(Boolean).map((s) => s[0]).slice(0, 2).join('').toUpperCase() || '?'
+
 const navLinkStyle = (active: boolean): React.CSSProperties => ({
   display: 'flex', alignItems: 'center', gap: 10,
   padding: '19px 12px', borderRadius: 10, textDecoration: 'none',
@@ -147,7 +150,36 @@ export function Sidebar() {
       </nav>
 
       {/* Logout */}
-      <div style={{ padding: '8px 8px', borderTop: '1px solid var(--color-border)' }}>
+      <div style={{ padding: '8px 8px', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {user && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '10px 12px', borderRadius: 10,
+            background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+          }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+              background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+              color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 13, fontWeight: 700, position: 'relative',
+            }}>
+              {getInitials(user.name || user.username)}
+              <span style={{
+                position: 'absolute', bottom: 0, right: 0, width: 9, height: 9,
+                borderRadius: '50%', background: '#22c55e',
+                border: '2px solid var(--color-sidebar)',
+              }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {user.name || user.username}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                {user.role === 'superAdmin' ? t('superAdmin') : t('admin')}
+              </div>
+            </div>
+          </div>
+        )}
         <button onClick={logout} style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '10px 12px', borderRadius: 10, width: '100%',
