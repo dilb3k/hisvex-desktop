@@ -1,0 +1,53 @@
+{
+  "name": "hisvex-desktop",
+  "version": "1.0.2",
+  "description": "Hisvex — bar/cafe inventory & sales desktop application",
+  "author": {
+    "name": "Hisvex",
+    "email": "dilbekshermatov@gamil.com"
+  },
+  "homepage": "https://hisvex-web.vercel.app",
+  "main": "build/main.js",
+  "scripts": {
+    "dev": "tsc -p tsconfig.electron.json && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev:renderer": "vite",
+    "dev:electron": "electron .",
+    "build": "vite build && tsc -p tsconfig.electron.json",
+    "build:renderer": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "package:win": "npm run build && electron-builder --win",
+    "package:win:msi": "npm run build && electron-builder --win --config electron-builder.yml --win msi",
+    "package:mac": "npm run build && electron-builder --mac",
+    "package:all": "npm run build && electron-builder --win --mac",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "@types/react-datepicker": "^6.2.0",
+    "axios": "^1.13.0",
+    "dayjs": "^1.11.13",
+    "electron-store": "^8.2.0",
+    "lucide-react": "^0.487.0",
+    "react": "^19.1.0",
+    "react-datepicker": "^9.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.5.0",
+    "uuid": "^11.1.0",
+    "zustand": "^5.0.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.5",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^4.4.1",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^9.1.2",
+    "electron": "^42.5.0",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.1.5",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "wait-on": "^8.0.3"
+  }
+}
