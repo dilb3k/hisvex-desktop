@@ -282,7 +282,7 @@ export function DebtorsScreen() {
   }
 
   return (
-    <div style={{ padding: '24px 32px', maxWidth: 800, margin: '0 auto' }}>
+    <div style={{ maxWidth: 800, margin: '0 auto' }}>
       {offline && (
         <div style={{
           padding: '10px 16px',
