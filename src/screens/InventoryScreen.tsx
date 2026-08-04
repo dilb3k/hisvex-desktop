@@ -6,6 +6,7 @@ import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
 import { ChevronLeft, ChevronRight, Package, Search } from 'lucide-react'
 import { t } from '../i18n'
+import { PageHeader } from '../components/PageHeader'
 import type { Product, InventoryItem } from '../types'
 import { formatMoney, overlay } from '../styles/shared'
 import { getBusinessDate } from '../utils/businessDay'
@@ -28,13 +29,12 @@ interface EnrichedItem {
 }
 
 function getStockStatus(remaining: number) {
-  if (remaining <= 0) return { label: 'Tugagan', color: 'var(--color-danger)' }
-  if (remaining <= 5) return { label: 'Kam', color: 'var(--color-warning)' }
-  return { label: 'Bor', color: 'var(--color-success)' }
+  if (remaining <= 0) return { label: 'Tugagan', color: 'var(--color-danger)', cls: 'badge badge-danger' }
+  if (remaining <= 5) return { label: 'Kam', color: 'var(--color-warning)', cls: 'badge badge-warning' }
+  return { label: 'Bor', color: 'var(--color-success)', cls: 'badge badge-success' }
 }
 
 const s: Record<string, React.CSSProperties> = {
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   title: { fontSize: 24, fontWeight: 700 },
   dateNav: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, justifyContent: 'center' },
   dateNavBtn: { width: 36, height: 36, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
@@ -199,13 +199,10 @@ export function InventoryScreen() {
             <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text)' }}>{entry.product.name}</div>
             <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 2 }}>{formatMoney(entry.sellPrice)}</div>
           </div>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 20,
-            fontSize: 12, fontWeight: 600, background: `${status.color}18`, color: status.color, whiteSpace: 'nowrap',
-          }}>
+          <span className={status.cls} style={{ gap: 4 }}>
             <span style={{ width: 7, height: 7, borderRadius: 3, background: status.color }} />
             {status.label}
-          </div>
+          </span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           <div><div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{t('start')}</div><div style={{ fontSize: 15, fontWeight: 600 }}>{entry.opening}</div></div>
@@ -235,13 +232,10 @@ export function InventoryScreen() {
               <div style={s.modalTitle}>{selectedEntry.product.name}</div>
               <div style={s.modalPrice}>{formatMoney(selectedEntry.sellPrice)}</div>
             </div>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 20,
-              fontSize: 12, fontWeight: 600, background: `${status.color}18`, color: status.color, whiteSpace: 'nowrap',
-            }}>
+            <span className={status.cls} style={{ gap: 4 }}>
               <span style={{ width: 7, height: 7, borderRadius: 3, background: status.color }} />
               {status.label}
-            </div>
+            </span>
           </div>
 
           {isPastDate ? (
@@ -304,10 +298,10 @@ export function InventoryScreen() {
 
   const content = () => (
     <>
-      <div style={s.header}>
-        <h2 style={s.title}>{t('inventory')}</h2>
-        {isPastDate && <span style={s.readOnlyBadge}>{t('readOnly')}</span>}
-      </div>
+      <PageHeader
+        title={t('inventory')}
+        actions={isPastDate ? <span className="badge badge-danger">{t('readOnly')}</span> : undefined}
+      />
       {renderDateNav()}
       {renderSearch()}
       <div style={s.summaryRow}>
@@ -331,7 +325,7 @@ export function InventoryScreen() {
   if (isFutureDate) {
     return (
       <div>
-        <div style={s.header}><h2 style={s.title}>{t('inventory')}</h2></div>
+        <PageHeader title={t('inventory')} />
         {renderDateNav()}
         <div style={s.emptyWrap}>
           <Package size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
@@ -345,7 +339,7 @@ export function InventoryScreen() {
   if (loading && items.length === 0) {
     return (
       <div>
-        <div style={s.header}><h2 style={s.title}>{t('inventory')}</h2></div>
+        <PageHeader title={t('inventory')} />
         {renderDateNav()}
         <div style={s.spinnerWrap}><div style={{ width: 32, height: 32, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
       </div>

@@ -146,6 +146,8 @@ export const translations = {
     readOnlyMode: 'Faqat o\'qish rejimi',
 
     // Sales
+    salesSubtitle: 'Sotuvlarni qayd eting va hisob-kitob qiling',
+    scanBarcode: 'Shtrixkodni skanerlash',
     recordSales: 'Savdoni qayd etish',
     addProductToSale: 'Mahsulot qo\'shish',
     noItemsInCart: 'Savatchada mahsulot yo\'q',
@@ -160,6 +162,7 @@ export const translations = {
     enterValidQuantity: 'To\'g\'ri miqdor kiriting',
 
     // Debtors
+    debtorsSubtitle: 'Qarzdorlaringizni kuzatib boring',
     addDebtor: 'Qarzdor qo\'shish',
     editDebtor: 'Qarzdorni tahrirlash',
     debtorName: 'Ism',
@@ -229,6 +232,8 @@ export const translations = {
     colDailyTurnover: 'Aylanma',
 
     // Settings
+    settingsTitle: 'Sozlamalar',
+    settingsSubtitle: 'Hisob va ilova sozlamalari',
     profile: 'Profil',
     account: 'Hisob',
     role: 'Rol',
@@ -484,6 +489,8 @@ export const translations = {
     readOnlyMode: 'Режим только чтения',
 
     // Sales
+    salesSubtitle: 'Фиксируйте продажи и ведите расчеты',
+    scanBarcode: 'Сканировать штрихкод',
     recordSales: 'Записать продажу',
     addProductToSale: 'Добавить товар',
     noItemsInCart: 'В корзине нет товаров',
@@ -498,6 +505,7 @@ export const translations = {
     enterValidQuantity: 'Введите правильное количество',
 
     // Debtors
+    debtorsSubtitle: 'Следите за своими должниками',
     addDebtor: 'Добавить должника',
     editDebtor: 'Редактировать должника',
     debtorName: 'Имя',
@@ -586,6 +594,8 @@ export const translations = {
     colDailyTurnover: 'Оборот',
 
     // Settings
+    settingsTitle: 'Настройки',
+    settingsSubtitle: 'Настройки аккаунта и приложения',
     profile: 'Профиль',
     account: 'Аккаунт',
     role: 'Роль',

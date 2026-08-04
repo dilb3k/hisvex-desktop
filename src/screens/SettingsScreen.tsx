@@ -6,7 +6,7 @@ import { t, getLanguage, setLanguage } from '../i18n'
 import type { Language } from '../i18n'
 import type { User } from '../types'
 import {
-  User,
+  UserIcon,
   Users,
   Shield,
   Lock,
@@ -22,6 +22,7 @@ import {
   Minus,
   Plus,
 } from 'lucide-react'
+import { PageHeader } from '../components/PageHeader'
 import {
   getBusinessDayStartHour,
   getPendingBusinessDayStartHour,
@@ -155,6 +156,10 @@ export function SettingsScreen() {
     setShowBusinessDay(false)
   }, [editingHour])
 
+  const focusBlockInput = useCallback(() => {
+    setTimeout(() => blockInputRef.current?.focus(), 60)
+  }, [])
+
   const openBlockModal = useCallback(() => {
     setPinStep(0)
     setPinInputs(['', '', ''])
@@ -180,10 +185,6 @@ export function SettingsScreen() {
 
   const curPin = pinInputs[pinStep] ?? ''
   const isLastStep = pinStep === blockSteps.length - 1
-
-  const focusBlockInput = useCallback(() => {
-    setTimeout(() => blockInputRef.current?.focus(), 60)
-  }, [])
 
   const handleStepAction = useCallback(async (step: number, inputs: string[]) => {
     const value = inputs[step] ?? ''
@@ -272,7 +273,7 @@ export function SettingsScreen() {
 
   const getTierBg = (tier: string) => {
     switch (tier) {
-      case 'pro': return 'rgba(99,102,241,0.12)'
+      case 'pro': return 'var(--color-primary-soft)'
       case 'bor': return 'rgba(34,197,94,0.12)'
       default: return 'rgba(145,149,166,0.12)'
     }
@@ -301,6 +302,8 @@ export function SettingsScreen() {
 
   return (
     <div style={{ maxWidth: 520, margin: '0 auto', paddingBottom: 40 }}>
+      <PageHeader title={t('settingsTitle')} subtitle={t('settingsSubtitle')} />
+
       {/* User Info */}
       {user && (
         <div style={sectionStyle}>
@@ -310,13 +313,13 @@ export function SettingsScreen() {
                 width: 48,
                 height: 48,
                 borderRadius: 24,
-                background: 'rgba(99,102,241,0.12)',
+                background: 'var(--color-primary-soft)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
               }}>
-                <User size={24} style={{ color: 'var(--color-primary)' }} />
+                <UserIcon size={24} style={{ color: 'var(--color-primary)' }} />
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 16, fontWeight: 700 }}>{user.username}</div>
@@ -334,7 +337,7 @@ export function SettingsScreen() {
               ...cardStyle,
               borderColor: `${getTierColor(userTier)}40`,
               background: userTier === 'pro'
-                ? 'rgba(99,102,241,0.06)'
+                ? 'var(--color-primary-soft)'
                 : userTier === 'bor'
                   ? 'rgba(34,197,94,0.06)'
                   : 'var(--color-surface)',
@@ -470,7 +473,7 @@ export function SettingsScreen() {
                 onClick={() => handleSetLanguage(lang.code)}
                 style={{
                   ...pillStyle,
-                  background: selected ? 'rgba(99,102,241,0.12)' : 'var(--color-surface)',
+                  background: selected ? 'var(--color-primary-soft)' : 'var(--color-surface)',
                   borderColor: selected ? 'var(--color-primary)' : 'var(--color-border)',
                   color: selected ? 'var(--color-primary)' : 'var(--color-text)',
                   fontWeight: selected ? 700 : 600,
@@ -499,7 +502,7 @@ export function SettingsScreen() {
                 onClick={() => handleSetTheme(item.code)}
                 style={{
                   ...pillStyle,
-                  background: selected ? 'rgba(99,102,241,0.12)' : 'var(--color-surface)',
+                  background: selected ? 'var(--color-primary-soft)' : 'var(--color-surface)',
                   borderColor: selected ? 'var(--color-primary)' : 'var(--color-border)',
                   color: selected ? 'var(--color-primary)' : 'var(--color-text)',
                   fontWeight: selected ? 700 : 600,

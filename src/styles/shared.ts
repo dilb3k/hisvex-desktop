@@ -16,7 +16,7 @@ export const modalContainer: CSSProperties = {
   width: 480,
   maxHeight: '90vh',
   background: 'var(--color-bg-alt)',
-  borderRadius: 16,
+  borderRadius: 'var(--radius-xl)',
   border: '1px solid var(--color-border)',
   display: 'flex',
   flexDirection: 'column',
@@ -53,7 +53,7 @@ export const modalFooter: CSSProperties = {
 
 export const inputBase: CSSProperties = {
   padding: '12px 15px',
-  borderRadius: 10,
+  borderRadius: 'var(--radius-md)',
   border: '1.5px solid var(--color-border)',
   background: 'var(--color-bg)',
   color: 'var(--color-text)',
@@ -67,7 +67,7 @@ export const inputBase: CSSProperties = {
 export const inputError: CSSProperties = {
   ...inputBase,
   borderColor: 'var(--color-danger)',
-  boxShadow: '0 0 0 3px rgba(239,68,68,0.1)',
+  boxShadow: '0 0 0 3px var(--color-danger-soft)',
 }
 
 export const label: CSSProperties = {
@@ -87,7 +87,7 @@ export const errorText: CSSProperties = {
 
 export const btnPrimary: CSSProperties = {
   padding: '11px 22px',
-  borderRadius: 10,
+  borderRadius: 'var(--radius-md)',
   border: 'none',
   background: 'var(--color-primary)',
   color: '#fff',
@@ -100,7 +100,7 @@ export const btnPrimary: CSSProperties = {
 
 export const btnSecondary: CSSProperties = {
   padding: '11px 22px',
-  borderRadius: 10,
+  borderRadius: 'var(--radius-md)',
   border: '1.5px solid var(--color-border)',
   background: 'transparent',
   color: 'var(--color-text)',
@@ -112,7 +112,7 @@ export const btnSecondary: CSSProperties = {
 
 export const btnDanger: CSSProperties = {
   padding: '11px 22px',
-  borderRadius: 10,
+  borderRadius: 'var(--radius-md)',
   border: 'none',
   background: 'var(--color-danger)',
   color: '#fff',
@@ -124,7 +124,7 @@ export const btnDanger: CSSProperties = {
 
 export const btnSuccess: CSSProperties = {
   padding: '11px 22px',
-  borderRadius: 10,
+  borderRadius: 'var(--radius-md)',
   border: 'none',
   background: 'var(--color-success)',
   color: '#fff',
@@ -136,7 +136,7 @@ export const btnSuccess: CSSProperties = {
 
 export const card: CSSProperties = {
   background: 'var(--color-surface)',
-  borderRadius: 14,
+  borderRadius: 'var(--radius-lg)',
   border: '1px solid var(--color-border)',
   padding: 22,
   transition: 'all 0.2s',
@@ -173,7 +173,7 @@ export const searchWrap: CSSProperties = {
 export const searchInput: CSSProperties = {
   width: '100%',
   padding: '11px 15px 11px 40px',
-  borderRadius: 10,
+  borderRadius: 'var(--radius-md)',
   border: '1.5px solid var(--color-border)',
   background: 'var(--color-surface)',
   color: 'var(--color-text)',
@@ -201,7 +201,7 @@ export const summaryGrid = (cols = 4): CSSProperties => ({
 
 export const summaryItem: CSSProperties = {
   padding: '18px 20px',
-  borderRadius: 12,
+  borderRadius: 'var(--radius-lg)',
   background: 'var(--color-surface)',
   border: '1px solid var(--color-border)',
   transition: 'all 0.2s',

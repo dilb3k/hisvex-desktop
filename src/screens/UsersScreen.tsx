@@ -4,6 +4,7 @@ import { useAppStore } from '../store/appStore'
 import { adminsApi } from '../api/client'
 import { Users, CreditCard, Shield, Pencil, Trash2, LogOut, X, Clock } from 'lucide-react'
 import { t } from '../i18n'
+import { PageHeader } from '../components/PageHeader'
 import { formatPhone } from '../utils/formatters'
 import type { User } from '../types'
 
@@ -183,28 +184,19 @@ export function UsersScreen() {
 
   return (
     <div>
-      <div style={headerRowStyle}>
-        <h2 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>{t('usersTitle')}</h2>
-        <button
-          onClick={handleLogout}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '8px 14px',
-            borderRadius: 6,
-            border: '1px solid var(--color-danger)',
-            background: 'transparent',
-            color: 'var(--color-danger)',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          <LogOut size={16} />
-          {t('logout')}
-        </button>
-      </div>
+      <PageHeader
+        title={t('usersTitle')}
+        actions={
+          <button
+            onClick={handleLogout}
+            className="btn btn-ghost"
+            style={{ color: 'var(--color-danger)' }}
+          >
+            <LogOut size={16} />
+            {t('logout')}
+          </button>
+        }
+      />
 
       <div style={{ padding: '0 20px 20px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 20 }}>

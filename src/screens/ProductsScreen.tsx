@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { productsApi, resolveImageUrl, getDeviceId, clearApiCache } from '../api/client'
 import { Package, Plus, Search, Pencil, Lock, AlertTriangle, Trash2, X } from 'lucide-react'
 import { t } from '../i18n'
+import { PageHeader } from '../components/PageHeader'
 import type { Product } from '../types'
 import {
   overlay,
@@ -19,8 +20,6 @@ import {
   btnSecondary,
   btnDanger,
   spinner,
-  pageHeader,
-  pageTitle,
   formatMoney,
   formatInputAmount,
   parseFormattedAmount,
@@ -328,36 +327,38 @@ export function ProductsScreen() {
 
   return (
     <div style={{ padding: 0 }}>
-      <div style={pageHeader}>
-        <h2 style={pageTitle}>{t('products')}</h2>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <div style={{ position: 'relative' }}>
-            <Search size={18} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-secondary)', pointerEvents: 'none' }} />
-            <input
-              type="text"
-              placeholder={t('search')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+      <PageHeader
+        title={t('products')}
+        actions={
+          <>
+            <div style={{ position: 'relative' }}>
+              <Search size={18} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-secondary)', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                placeholder={t('search')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{
+                  ...inputBase,
+                  paddingLeft: 38,
+                  width: 250,
+                  borderRadius: 10,
+                }}
+              />
+            </div>
+            <button
+              onClick={openCreate}
               style={{
-                ...inputBase,
-                paddingLeft: 38,
-                width: 250,
-                borderRadius: 10,
+                ...btnIcon,
+                background: 'var(--color-primary)',
               }}
-            />
-          </div>
-          <button
-            onClick={openCreate}
-            style={{
-              ...btnIcon,
-              background: 'var(--color-primary)',
-            }}
-            title={t('addProduct')}
-          >
-            <Plus size={20} color="#fff" />
-          </button>
-        </div>
-      </div>
+              title={t('addProduct')}
+            >
+              <Plus size={20} color="#fff" />
+            </button>
+          </>
+        }
+      />
 
       {isLoading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
