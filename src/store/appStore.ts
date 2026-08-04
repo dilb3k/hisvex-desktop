@@ -176,7 +176,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   refreshAll: async () => {
     clearApiCache()
     Object.keys(lastLoadTime).forEach((key) => delete lastLoadTime[key])
-    set((state) => ({ refreshKey: state.refreshKey + 1 }))
+    set((state) => ({ refreshKey: state.refreshKey + 1, inventoryPerDateCache: {} }))
     await Promise.all([
       get().loadProducts(true),
       get().loadInventoryByDate(get().selectedDate || getBusinessDate()),

@@ -18,8 +18,16 @@ export const parseWholeNumber = (value: string): number => {
 export const formatWholeNumber = (value: number): string =>
   value.toLocaleString('uz-UZ')
 
-export const formatMoney = (value: number): string =>
-  `${value.toLocaleString('uz-UZ')} so'm`
+export const formatMoney = (value?: number): string => {
+  if (value == null || Number.isNaN(value) || !Number.isFinite(value)) return "0 so'm"
+  return value.toLocaleString('uz-UZ') + " so'm"
+}
+
+export const resolveSellPrice = (item: { sellPrice?: number; price?: number }, product?: { sellPrice?: number; sellingPrice?: number }): number =>
+  item.sellPrice ?? item.price ?? product?.sellPrice ?? product?.sellingPrice ?? 0
+
+export const resolveBuyPrice = (item: { buyPrice?: number }, product?: { buyPrice?: number; costPrice?: number }): number =>
+  item.buyPrice ?? product?.buyPrice ?? product?.costPrice ?? 0
 
 export const hasValidationErrors = (errors: ProductValidationErrors): boolean =>
   Object.values(errors).some((error) => error !== '')

@@ -10,6 +10,7 @@ import { PageHeader } from '../components/PageHeader'
 import type { Product, InventoryItem } from '../types'
 import { formatMoney, overlay } from '../styles/shared'
 import { getBusinessDate } from '../utils/businessDay'
+import { resolveSellPrice, resolveBuyPrice } from '../utils/inventory'
 
 const parseWholeNumber = (val: string) => Number(val.replace(/\D/g, '')) || 0
 
@@ -95,12 +96,12 @@ export function InventoryScreen() {
     for (const item of items) {
       const product = item.product
       if (!product) continue
-      const sellPrice = item.sellPrice ?? product.sellPrice ?? product.sellingPrice ?? 0
-      const buyPrice = item.buyPrice ?? product.buyPrice ?? product.costPrice ?? 0
-      const opening = item.startQuantity ?? 0
+      const sellPrice = resolveSellPrice(item, product)
+      const buyPrice = resolveBuyPrice(item, product)
+      const opening = item.startQuantity ?? item.openingQuantity ?? 0
       const current = item.currentQuantity ?? 0
       const remaining = Math.max(current, 0)
-      const sold = item.sold ?? 0
+      const sold = item.sold ?? Math.max(opening - current, 0)
       const revenue = item.revenue ?? (sold * sellPrice)
       const realizedProfit = item.realizedProfit ?? (sold * (sellPrice - buyPrice))
       const stockSellValue = remaining * sellPrice
@@ -144,11 +145,20 @@ export function InventoryScreen() {
       const newQty = parseWholeNumber(currentQtyInput)
       const productId = selectedEntry.inv?.productId ?? selectedEntry.product._id
       await inventoryApi.bulkUpdate([{ productId, currentQuantity: newQty }])
-      setItems((prev) => prev.map((item) =>
-        (item.productId === productId || item.product?._id === productId)
-          ? { ...item, currentQuantity: newQty }
-          : item
-      ))
+      setItems((prev) => prev.map((item) => {
+        if (item.productId !== productId && item.product?._id !== productId) return item
+        const opening = item.startQuantity ?? item.openingQuantity ?? 0
+        const newSold = Math.max(opening - newQty, 0)
+        const sp = resolveSellPrice(item, item.product)
+        const bp = resolveBuyPrice(item, item.product)
+        return {
+          ...item,
+          currentQuantity: newQty,
+          sold: newSold,
+          revenue: newSold * sp,
+          realizedProfit: newSold * (sp - bp),
+        }
+      }))
       setSaved(true)
       setTimeout(() => closeModal(), 700)
     } catch (err: unknown) { showToast(err instanceof Error ? err.message : t('error'), 'error') } finally { setSaving(false) }

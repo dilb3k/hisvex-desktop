@@ -1,17 +1,12 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useAppStore } from '../store/appStore'
 import { inventoryApi, resolveImageUrl, getDeviceId } from '../api/client'
-import dayjs from 'dayjs'
 import { Minus, Plus, Package, Scan, Search, ShoppingBag, X } from 'lucide-react'
 import { t } from '../i18n'
 import { PageHeader } from '../components/PageHeader'
 import type { InventoryItem, Product } from '../types'
 import { getBusinessDate } from '../utils/businessDay'
-
-const formatMoney = (val?: number) => {
-  if (val === undefined || val === null || Number.isNaN(val)) return '0 so\'m'
-  return val.toLocaleString('uz-UZ') + ' so\'m'
-}
+import { resolveSellPrice, formatMoney } from '../utils/inventory'
 
 export function SalesScreen() {
   const { products } = useAppStore()
@@ -92,7 +87,7 @@ export function SalesScreen() {
 
   const totalRevenue = useMemo(() => {
     return cartArray.reduce((sum, { quantity, product, item }) => {
-      const price = item?.sellPrice ?? product?.sellPrice ?? 0
+      const price = resolveSellPrice(item || {}, product)
       return sum + quantity * price
     }, 0)
   }, [cartArray])
@@ -295,7 +290,7 @@ export function SalesScreen() {
               const product = item.product as Product | undefined
               const cartQty = cart[item.productId] || 0
               const isActive = cartQty > 0
-              const price = item.sellPrice ?? product?.sellPrice ?? 0
+              const price = resolveSellPrice(item, product)
 
               return (
                 <div

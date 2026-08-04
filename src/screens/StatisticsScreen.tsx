@@ -7,6 +7,7 @@ import dayjs from 'dayjs'
 import { Download, CalendarClock, RefreshCw, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight, Wallet, ShoppingCart, Percent, Package } from 'lucide-react'
 import { t } from '../i18n'
 import { formatMoney } from '../styles/shared'
+import { resolveSellPrice, resolveBuyPrice } from '../utils/inventory'
 import type { InventorySummary } from '../types'
 
 type Period = 'daily' | 'monthly' | 'yearly'
@@ -302,8 +303,8 @@ function buildTotals(summary: InventorySummary | null, items: any[]): Totals {
   for (const item of items) {
     const qty = item.currentQuantity ?? 0
     const p = item.product
-    const sellPrice = item.sellPrice ?? p?.sellingPrice ?? 0
-    const buyPrice = item.buyPrice ?? p?.costPrice ?? 0
+    const sellPrice = resolveSellPrice(item, p)
+    const buyPrice = resolveBuyPrice(item, p)
     const soldQty = item.sold ?? 0
     sold += soldQty
     revenue += soldQty * sellPrice
@@ -313,14 +314,14 @@ function buildTotals(summary: InventorySummary | null, items: any[]): Totals {
   const stockSellValue = items.reduce((s, item) => {
     const qty = item.currentQuantity ?? 0
     const p = item.product
-    const sellPrice = item.sellPrice ?? p?.sellingPrice ?? 0
+    const sellPrice = resolveSellPrice(item, p)
     return s + Math.max(qty, 0) * sellPrice
   }, 0)
   const stockProfit = items.reduce((s, item) => {
     const qty = item.currentQuantity ?? 0
     const p = item.product
-    const sellPrice = item.sellPrice ?? p?.sellingPrice ?? 0
-    const buyPrice = item.buyPrice ?? p?.costPrice ?? 0
+    const sellPrice = resolveSellPrice(item, p)
+    const buyPrice = resolveBuyPrice(item, p)
     return s + Math.max(qty, 0) * (sellPrice - buyPrice)
   }, 0)
   return {
@@ -389,7 +390,7 @@ export function StatisticsScreen() {
       return { revenue: summary.totalRevenue, profit: summary.totalProfit, sold: summary.totalSold }
     }
     const revenue = inventoryItems.reduce((s, item) => {
-      const sellPrice = item.sellPrice ?? item.product?.sellingPrice ?? 0
+      const sellPrice = resolveSellPrice(item, item.product)
       return s + (item.sold ?? 0) * sellPrice
     }, 0)
     const profit = inventoryItems.reduce((s, item) => s + (item.realizedProfit ?? 0), 0)
@@ -429,9 +430,10 @@ export function StatisticsScreen() {
     for (const item of inventoryItems) {
       const p = item.product
       const name = p?.name || 'Noma\'lum'
-      const buy = item.buyPrice ?? p?.buyPrice ?? 0
-      const sell = item.sellPrice ?? p?.sellPrice ?? 0
-      const sold = item.sold ?? 0
+      const buy = resolveBuyPrice(item, p)
+      const sell = resolveSellPrice(item, p)
+      const opening = item.startQuantity ?? item.openingQuantity ?? 0
+      const sold = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
       const revenue = item.revenue ?? sold * sell
       const profit = item.realizedProfit ?? sold * (sell - buy)
       rows.push([name, String(buy), String(sell), String(sold), String(revenue), String(profit)])

@@ -5,11 +5,7 @@ import { Plus, UserPlus, History, Pencil, Trash2, Search, ArrowLeft, UsersRound 
 import { t } from '../i18n'
 import { PageHeader } from '../components/PageHeader'
 import type { Debtor, DebtHistory } from '../types'
-
-const formatMoney = (val?: number) => {
-  if (!val) return '0 so\'m'
-  return val.toLocaleString('uz-UZ') + ' so\'m'
-}
+import { formatMoney } from '../utils/inventory'
 const formatInputAmount = (text: string) => {
   const digits = text.replace(/[^\d]/g, '')
   if (!digits) return ''
@@ -160,6 +156,10 @@ export function DebtorsScreen() {
     setAdjustError('')
     const amount = parseFormattedAmount(adjustAmount)
     if (amount <= 0) return
+    if (type === 'subtract' && amount > selectedDebtor.amount) {
+      setAdjustError('O\'chirilayotgan summa qarzdan katta')
+      return
+    }
     const adjAmount = type === 'subtract' ? -amount : amount
     try {
       await debtorsApi.adjust(selectedDebtor._id, adjAmount)
