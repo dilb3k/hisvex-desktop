@@ -38,9 +38,9 @@ const getInitials = (name: string) =>
   name.split(/[\s_]+/).filter(Boolean).map((s) => s[0]).slice(0, 2).join('').toUpperCase() || '?'
 
 const navLinkStyle = (active: boolean): React.CSSProperties => ({
-  display: 'flex', alignItems: 'center', gap: 10,
-  padding: '19px 12px', borderRadius: 10, textDecoration: 'none',
-  fontSize: 14, fontWeight: 500,
+  display: 'flex', alignItems: 'center', gap: 12,
+  padding: '12px 14px', borderRadius: 12, textDecoration: 'none',
+  fontSize: 15, fontWeight: 500,
   color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
   background: active ? 'var(--color-primary-soft)' : 'transparent',
   transition: 'all 0.2s',
@@ -50,7 +50,7 @@ const navLinkStyle = (active: boolean): React.CSSProperties => ({
 
 const navLinkCollapsed: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center',
-  height: 64, borderRadius: 10, textDecoration: 'none',
+  height: 52, borderRadius: 12, textDecoration: 'none',
   transition: 'all 0.2s',
 }
 
@@ -72,21 +72,19 @@ export function Sidebar() {
   if (collapsed) {
     return (
       <aside style={{
-        width: 60, height: '100%', background: 'var(--color-sidebar)',
+        width: 68, height: '100%', background: 'var(--color-sidebar)',
         borderRight: '1px solid var(--color-border)',
         display: 'flex', flexDirection: 'column', flexShrink: 0, transition: 'width 0.2s',
       }}>
-        {/* Top buttons: Expand, Refresh */}
-        <div style={{ padding: '6px', display: 'flex', flexDirection: 'column', gap: 2, borderBottom: '1px solid var(--color-border)' }}>
+        <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: 3, borderBottom: '1px solid var(--color-border)' }}>
           <button onClick={() => setCollapsed(false)} style={iconBtn} title="Expand">
-            <ChevronRight size={18} />
+            <ChevronRight size={20} />
           </button>
           <button onClick={handleRefresh} style={iconBtn} title={t('refresh')}>
-            <RefreshCw size={18} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+            <RefreshCw size={20} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
           </button>
         </div>
-        {/* Nav */}
-        <nav style={{ flex: 1, padding: '8px 6px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <nav style={{ flex: 1, padding: '8px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
           {visibleItems.map((item) => (
             <NavLink
               key={item.to} to={item.to} end={item.to === '/'}
@@ -97,14 +95,13 @@ export function Sidebar() {
               }}
               title={t(item.labelKey)}
             >
-              <item.icon size={22} />
+              <item.icon size={24} />
             </NavLink>
           ))}
         </nav>
-        {/* Logout */}
-        <div style={{ padding: '6px', borderTop: '1px solid var(--color-border)' }}>
+        <div style={{ padding: '8px', borderTop: '1px solid var(--color-border)' }}>
           <button onClick={logout} style={{ ...iconBtn, color: 'var(--color-danger)' }} title={t('logout')}>
-            <LogOut size={18} />
+            <LogOut size={20} />
           </button>
         </div>
       </aside>
@@ -113,80 +110,77 @@ export function Sidebar() {
 
   return (
     <aside style={{
-      width: 220, height: '100%', background: 'var(--color-sidebar)',
+      width: 260, height: '100%', background: 'var(--color-sidebar)',
       borderRight: '1px solid var(--color-border)',
       display: 'flex', flexDirection: 'column', flexShrink: 0, transition: 'width 0.2s',
     }}>
-      {/* Header: Logo + buttons */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 2,
-        padding: '8px 10px', borderBottom: '1px solid var(--color-border)',
+        padding: '10px 14px', borderBottom: '1px solid var(--color-border)',
       }}>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 9, overflow: 'hidden', flexShrink: 0, background: 'transparent' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, overflow: 'hidden', flexShrink: 0, background: 'transparent' }}>
             <img src="./Hisvex.png" alt="Hisvex" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
-          <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--color-primary)' }}>Hisvex</span>
+          <span style={{ fontSize: 19, fontWeight: 700, color: 'var(--color-primary)' }}>Hisvex</span>
         </div>
-        <button onClick={handleRefresh} style={{ ...iconBtn, width: 34, height: 34 }} title={t('refresh')}>
-          <RefreshCw size={16} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+        <button onClick={handleRefresh} style={{ ...iconBtn, width: 36, height: 36 }} title={t('refresh')}>
+          <RefreshCw size={18} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
         </button>
-        <button onClick={() => setCollapsed(true)} style={{ ...iconBtn, width: 34, height: 34 }} title="Collapse">
-          <ChevronLeft size={16} />
+        <button onClick={() => setCollapsed(true)} style={{ ...iconBtn, width: 36, height: 36 }} title="Collapse">
+          <ChevronLeft size={18} />
         </button>
       </div>
 
-      {/* Nav */}
-      <nav style={{ flex: 1, padding: '8px 8px', display: 'flex', flexDirection: 'column', gap: 2, overflow: 'auto' }}>
+      <nav style={{ flex: 1, padding: '10px 10px', display: 'flex', flexDirection: 'column', gap: 3, overflow: 'auto' }}>
         {visibleItems.map((item) => (
           <NavLink
             key={item.to} to={item.to} end={item.to === '/'}
             style={() => navLinkStyle(active(item.to))}
           >
-            <item.icon size={20} />
+            <item.icon size={22} />
             {t(item.labelKey)}
           </NavLink>
         ))}
       </nav>
 
-      {/* Logout */}
-      <div style={{ padding: '8px 8px', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ padding: '10px 10px', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
         {user && (
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '10px 12px', borderRadius: 10,
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '12px 14px', borderRadius: 12,
             background: 'var(--color-surface)', border: '1px solid var(--color-border)',
           }}>
             <div style={{
-              width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+              width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
               background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
               color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 13, fontWeight: 700, position: 'relative',
+              fontSize: 14, fontWeight: 700, position: 'relative',
             }}>
               {getInitials(user.name || user.username)}
               <span style={{
-                position: 'absolute', bottom: 0, right: 0, width: 9, height: 9,
+                position: 'absolute', bottom: 0, right: 0, width: 10, height: 10,
                 borderRadius: '50%', background: '#22c55e',
                 border: '2px solid var(--color-sidebar)',
               }} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user.name || user.username}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
                 {user.role === 'superAdmin' ? t('superAdmin') : t('admin')}
               </div>
             </div>
           </div>
         )}
         <button onClick={logout} style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '10px 12px', borderRadius: 10, width: '100%',
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '12px 14px', borderRadius: 12, width: '100%',
           border: 'none', background: 'transparent',
-          color: 'var(--color-text-tertiary)', fontSize: 13, cursor: 'pointer',
+          color: 'var(--color-text-tertiary)', fontSize: 14, cursor: 'pointer',
         }}>
-          <LogOut size={18} />
+          <LogOut size={20} />
           {t('logout')}
         </button>
       </div>
