@@ -424,7 +424,7 @@ export function ProductsScreen() {
                       <img
                         src={resolveImageUrl(item.image, item.imageHash)}
                         alt=""
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                         loading="lazy"
                       />
                     ) : (
