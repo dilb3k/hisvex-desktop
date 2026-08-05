@@ -15,11 +15,19 @@ export interface User {
   updatedAt?: string
 }
 
-export interface AuthResponse {
+export interface AuthSuccess {
   token: string
   refreshToken: string
   user: User
 }
+
+export interface AuthPhoneVerification {
+  needsPhoneVerification: true
+  maskedPhone: string
+  message?: string
+}
+
+export type AuthResponse = AuthSuccess | AuthPhoneVerification
 
 export interface Product {
   _id: string
