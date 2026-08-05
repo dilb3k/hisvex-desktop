@@ -87,12 +87,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ user })
   },
 
-  logout: async () => {
-    try {
-      await authApi.logout()
-    } catch {
-      // Best-effort: clearing local session is what matters
-    }
+  logout: () => {
+    try { authApi.logout().catch(() => {}) } catch {}
     setApiToken(null)
     setRefreshToken('')
     clearApiCache()
