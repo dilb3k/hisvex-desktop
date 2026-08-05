@@ -7,8 +7,30 @@ let activeHour = DEFAULT_HOUR
 let pendingHour: number | null = null
 let effectiveFrom: string | null = null
 
+const LS_HOUR = 'hisvex_business_hour'
+const LS_PENDING_HOUR = 'hisvex_pending_hour'
+const LS_PENDING_FROM = 'hisvex_pending_from'
+
+export function initBusinessDay() {
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = localStorage.getItem(LS_HOUR)
+      if (saved) activeHour = parseInt(saved, 10)
+      const pending = localStorage.getItem(LS_PENDING_HOUR)
+      const from = localStorage.getItem(LS_PENDING_FROM)
+      if (pending && from) {
+        pendingHour = parseInt(pending, 10)
+        effectiveFrom = from
+      }
+    } catch {}
+  }
+}
+
 export const setBusinessDayStartHour = (hour: number) => {
   activeHour = hour
+  if (typeof window !== 'undefined') {
+    try { localStorage.setItem(LS_HOUR, String(hour)) } catch {}
+  }
 }
 
 export const getBusinessDayStartHour = () => {
@@ -20,6 +42,12 @@ export const scheduleBusinessDayStartHour = (hour: number) => {
   const tomorrow = dayjs().add(1, 'day').startOf('day').hour(hour)
   pendingHour = hour
   effectiveFrom = tomorrow.toISOString()
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(LS_PENDING_HOUR, String(hour))
+      localStorage.setItem(LS_PENDING_FROM, effectiveFrom)
+    } catch {}
+  }
 }
 
 export const setPendingBusinessDayHour = (hour: number, from: string) => {
@@ -33,6 +61,12 @@ export const getEffectiveFrom = () => effectiveFrom
 export const clearPending = () => {
   pendingHour = null
   effectiveFrom = null
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem(LS_PENDING_HOUR)
+      localStorage.removeItem(LS_PENDING_FROM)
+    } catch {}
+  }
 }
 
 function applyPendingIfNeeded() {
@@ -41,6 +75,13 @@ function applyPendingIfNeeded() {
     activeHour = pendingHour
     pendingHour = null
     effectiveFrom = null
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(LS_HOUR, String(activeHour))
+        localStorage.removeItem(LS_PENDING_HOUR)
+        localStorage.removeItem(LS_PENDING_FROM)
+      } catch {}
+    }
   }
 }
 

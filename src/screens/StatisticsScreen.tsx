@@ -6,6 +6,7 @@ import { useAppStore } from '../store/appStore'
 import dayjs from 'dayjs'
 import { Download, CalendarClock, RefreshCw, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight, Wallet, ShoppingCart, Percent, Package } from 'lucide-react'
 import { t } from '../i18n'
+import { getBusinessDate } from '../utils/businessDay'
 import { formatMoney } from '../styles/shared'
 import { resolveSellPrice, resolveBuyPrice } from '../utils/inventory'
 import type { InventorySummary } from '../types'
@@ -58,9 +59,13 @@ function buildProductRankings(inventoryItems: any[]): ProductRankItem[] {
     if (!p) continue
     const id = p._id || p.id
     if (!id) continue
+    const opening = item.startQuantity ?? item.openingQuantity ?? 0
+    const sold = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
     const cur = seen.get(id) ?? { sold: 0, profit: 0, name: p.name || 'Noma\'lum' }
-    cur.sold += item.sold ?? 0
-    cur.profit += item.realizedProfit ?? 0
+    cur.sold += sold
+    const sp = resolveSellPrice(item, p)
+    const bp = resolveBuyPrice(item, p)
+    cur.profit += item.realizedProfit ?? (sold * (sp - bp))
     seen.set(id, cur)
   }
 
@@ -305,7 +310,7 @@ function buildTotals(summary: InventorySummary | null, items: any[]): Totals {
     const p = item.product
     const sellPrice = resolveSellPrice(item, p)
     const buyPrice = resolveBuyPrice(item, p)
-    const soldQty = item.sold ?? 0
+    const soldQty = item.sold ?? Math.max((item.startQuantity ?? item.openingQuantity ?? 0) - qty, 0)
     sold += soldQty
     revenue += soldQty * sellPrice
     profit += item.realizedProfit ?? (soldQty * (sellPrice - buyPrice))
@@ -345,15 +350,15 @@ const RangeButton = forwardRef<HTMLDivElement, { value?: string; onClick?: () =>
 
 export function StatisticsScreen() {
   const [period, setPeriod] = useState<Period>('daily')
-  const [selectedDate, setSelectedDate] = useState(dayjs().format('YYYY-MM-DD'))
+  const [selectedDate, setSelectedDate] = useState(getBusinessDate)
   const [inventoryItems, setInventoryItems] = useState<any[]>([])
   const [summary, setSummary] = useState<InventorySummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [showAllTime, setShowAllTime] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [pickerDate, setPickerDate] = useState(selectedDate)
-  const [allTimeFrom, setAllTimeFrom] = useState(dayjs().subtract(1, 'year').format('YYYY-MM-DD'))
-  const [allTimeTo, setAllTimeTo] = useState(dayjs().format('YYYY-MM-DD'))
+  const [allTimeFrom, setAllTimeFrom] = useState(() => dayjs(getBusinessDate()).subtract(1, 'year').format('YYYY-MM-DD'))
+  const [allTimeTo, setAllTimeTo] = useState(getBusinessDate)
   const [allTimeItems, setAllTimeItems] = useState<any[] | null>(null)
   const [allTimeSummary, setAllTimeSummary] = useState<InventorySummary | null>(null)
   const [allTimeLoading, setAllTimeLoading] = useState(false)
@@ -391,10 +396,21 @@ export function StatisticsScreen() {
     }
     const revenue = inventoryItems.reduce((s, item) => {
       const sellPrice = resolveSellPrice(item, item.product)
-      return s + (item.sold ?? 0) * sellPrice
+      const opening = item.startQuantity ?? item.openingQuantity ?? 0
+      const soldQty = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
+      return s + soldQty * sellPrice
     }, 0)
-    const profit = inventoryItems.reduce((s, item) => s + (item.realizedProfit ?? 0), 0)
-    const sold = inventoryItems.reduce((s, item) => s + (item.sold ?? 0), 0)
+    const profit = inventoryItems.reduce((s, item) => {
+      const sellPrice = resolveSellPrice(item, item.product)
+      const buyPrice = resolveBuyPrice(item, item.product)
+      const opening = item.startQuantity ?? item.openingQuantity ?? 0
+      const soldQty = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
+      return s + (item.realizedProfit ?? (soldQty * (sellPrice - buyPrice)))
+    }, 0)
+    const sold = inventoryItems.reduce((s, item) => {
+      const opening = item.startQuantity ?? item.openingQuantity ?? 0
+      return s + (item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0))
+    }, 0)
     return { revenue, profit, sold }
   }, [inventoryItems, summary])
 
@@ -467,8 +483,8 @@ export function StatisticsScreen() {
 
   const handleOpenAllTime = useCallback(async () => {
     setShowAllTime(true)
-    const from = dayjs().subtract(5, 'year').format('YYYY-MM-DD')
-    const to = dayjs().format('YYYY-MM-DD')
+    const from = dayjs(getBusinessDate()).subtract(5, 'year').format('YYYY-MM-DD')
+    const to = getBusinessDate()
     setAllTimeFrom(from)
     setAllTimeTo(to)
     await fetchAllTime(from, to)
@@ -515,6 +531,7 @@ export function StatisticsScreen() {
     const limit = 5
     const limited = rankItems.length > limit && !showAll
     const displayItems = limited ? rankItems.slice(0, limit) : rankItems
+    const maxSold = Math.max(...rankItems.map((i) => i.sold), 1)
 
     return (
       <div style={isBlacklist ? s.cardBlacklist : CARD}>
@@ -524,7 +541,7 @@ export function StatisticsScreen() {
         </div>
         {subtitle ? <p style={s.cardSubtitle}>{subtitle}</p> : null}
         {displayItems.length > 0 ? (
-          displayItems.map((item, i) => renderRankItem(item, i, isBlacklist, rankItems[0]?.sold))
+          displayItems.map((item, i) => renderRankItem(item, i, isBlacklist, maxSold))
         ) : (
           <p style={s.noDataText}>{t('noProductsPeriod') || 'Bu davrda mahsulot yo\'q'}</p>
         )}

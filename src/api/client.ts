@@ -87,6 +87,7 @@ function handleSessionExpired(
 ): Error {
   apiToken = null
   apiRefreshToken = null
+  cache.clear()
   try { localStorage.removeItem('hisvex_token') } catch {}
   try { localStorage.removeItem('hisvex_refresh') } catch {}
   try { localStorage.removeItem('hisvex_user') } catch {}
@@ -113,6 +114,8 @@ api.interceptors.response.use(
     normalizeIds(response.data)
     if (response.config.method === 'get') {
       cache.set(cacheKey(response.config), { data: response.data, ts: Date.now() })
+    } else {
+      cache.clear()
     }
     return response
   },

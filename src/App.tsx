@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import { setUnauthorizedHandler, setTokensRefreshedHandler } from './api/client'
+import { initBusinessDay } from './utils/businessDay'
 import { LoginScreen } from './screens/LoginScreen'
 import { ProductsScreen } from './screens/ProductsScreen'
 import { InventoryScreen } from './screens/InventoryScreen'
@@ -32,6 +33,8 @@ export function App() {
   const hydrate = useAuthStore((s) => s.hydrate)
 
   useEffect(() => { hydrate() }, [hydrate])
+
+  useEffect(() => { initBusinessDay() }, [])
 
   useEffect(() => {
     setUnauthorizedHandler(() => logout())

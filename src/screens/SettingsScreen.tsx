@@ -97,14 +97,14 @@ export function SettingsScreen() {
       try {
         const { data } = await adminsApi.getAll()
         if (!cancelled) setAdmins(data)
-      } catch {
-        // handled globally
+      } catch (err) {
+        if (!cancelled) showToast(err instanceof Error ? err.message : t('error'), 'error')
       } finally {
         if (!cancelled) setAdminsLoading(false)
       }
     })()
     return () => { cancelled = true }
-  }, [user?.role])
+  }, [user?.role, showToast, t])
 
   const handleToggleAdmin = useCallback(async (admin: User) => {
     if (togglingAdminId) return
@@ -114,12 +114,12 @@ export function SettingsScreen() {
       await adminsApi.update(admin._id, { isActive: next })
       setAdmins((prev) => prev.map((a) => (a._id === admin._id ? { ...a, isActive: next } : a)))
       showToast(next ? t('adminActivated') : t('adminDeactivated'), 'success')
-    } catch {
-      // handled globally
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('error'), 'error')
     } finally {
       setTogglingAdminId(null)
     }
-  }, [togglingAdminId, showToast])
+  }, [togglingAdminId, showToast, t])
 
   const blockCode = user?.blockCode ?? null
 
