@@ -34,6 +34,10 @@
   --color-metric-revenue: #9085e9;
   --color-metric-profit: #199e70;
   --color-metric-qty: #3987e5;
+  --color-metric-revenue-soft: rgba(144, 133, 233, 0.16);
+  --color-metric-profit-soft: rgba(25, 158, 112, 0.16);
+  --color-metric-qty-soft: rgba(57, 135, 229, 0.16);
+  --color-violet-soft: rgba(139, 92, 246, 0.16);
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
   --shadow-lg: 0 8px 30px rgba(0,0,0,0.5);
@@ -73,6 +77,10 @@
   --color-metric-revenue: #4a3aa7;
   --color-metric-profit: #1baf7a;
   --color-metric-qty: #2a78d6;
+  --color-metric-revenue-soft: rgba(74, 58, 167, 0.1);
+  --color-metric-profit-soft: rgba(27, 175, 122, 0.1);
+  --color-metric-qty-soft: rgba(42, 120, 214, 0.1);
+  --color-violet-soft: rgba(139, 92, 246, 0.1);
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
   --shadow-lg: 0 8px 30px rgba(0,0,0,0.12);

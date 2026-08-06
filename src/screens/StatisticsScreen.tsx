@@ -816,15 +816,17 @@ export function StatisticsScreen() {
                 label: t('netProfit') || 'Sof foyda',
                 value: formatMoney(totals.profit),
                 color: negativeNetProfit ? 'var(--color-danger)' : 'var(--color-metric-profit)',
+                bg: negativeNetProfit ? 'var(--color-danger-soft)' : 'var(--color-metric-profit-soft)',
+                negative: negativeNetProfit,
               },
-              { icon: <ShoppingCart size={18} />, label: t('soldPieces') || 'Sotilgan dona', value: String(totals.sold), color: 'var(--color-metric-qty)' },
-              { icon: <Percent size={18} />, label: t('marginPercent') || 'Marja foizi', value: `${margin}%`, color: 'var(--color-violet)' },
+              { icon: <ShoppingCart size={18} />, label: t('soldPieces') || 'Sotilgan dona', value: String(totals.sold), color: 'var(--color-metric-qty)', bg: 'var(--color-metric-qty-soft)', negative: false },
+              { icon: <Percent size={18} />, label: t('marginPercent') || 'Marja foizi', value: `${margin}%`, color: 'var(--color-violet)', bg: 'var(--color-violet-soft)', negative: false },
             ].map((item, i) => (
               <div key={i} style={s.kpiCard}>
-                <div style={{ ...s.kpiIcon, background: `${item.color}1a`, color: item.color }}>{item.icon}</div>
+                <div style={{ ...s.kpiIcon, background: item.bg, color: item.color }}>{item.icon}</div>
                 <div>
                   <div style={s.kpiLabel}>{item.label}</div>
-                  <div style={{ ...s.kpiValue, color: item.color === 'var(--color-danger)' ? item.color : 'var(--color-text)' }}>{item.value}</div>
+                  <div style={{ ...s.kpiValue, color: item.negative ? item.color : 'var(--color-text)' }}>{item.value}</div>
                 </div>
               </div>
             ))}
