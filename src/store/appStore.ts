@@ -22,6 +22,33 @@ const inflightKeys = new Set<string>()
 const lastLoadTime: Record<string, number> = {}
 let toastTimeoutId: ReturnType<typeof setTimeout> | null = null
 
+// Fresh object literal each call (not a shared constant) so callers never
+// accidentally mutate a cached reference — used both for the store's
+// initial state and to rebuild it from scratch in reset().
+function createInitialState() {
+  return {
+    products: [] as Product[],
+    inventory: [] as InventoryItem[],
+    inventoryPerDateCache: {} as Record<string, { items: InventoryItem[]; summary?: InventorySummary; fetchedAt: number }>,
+    dashboard: null as DashboardData | null,
+    snapshots: [] as DailySnapshot[],
+    debtors: [] as Debtor[],
+    isSyncing: false,
+    error: null as string | null,
+    loading: {
+      products: false,
+      inventory: false,
+      debtors: false,
+      snapshots: false,
+      dashboard: false,
+    } as LoadingState,
+    selectedDate: getBusinessDate(),
+    inventorySummary: null as InventorySummary | null,
+    refreshKey: 0,
+    toast: { visible: false, message: '', type: 'info' as const },
+  }
+}
+
 interface AppState {
   products: Product[]
   inventory: InventoryItem[]
@@ -50,28 +77,11 @@ interface AppState {
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void
   hideToast: () => void
   refreshAll: () => Promise<void>
+  reset: () => void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  products: [],
-  inventory: [],
-  inventoryPerDateCache: {},
-  dashboard: null,
-  snapshots: [],
-  debtors: [],
-  isSyncing: false,
-  error: null,
-  loading: {
-    products: false,
-    inventory: false,
-    debtors: false,
-    snapshots: false,
-    dashboard: false,
-  },
-  selectedDate: getBusinessDate(),
-  inventorySummary: null,
-  refreshKey: 0,
-  toast: { visible: false, message: '', type: 'info' },
+  ...createInitialState(),
 
   loadDashboard: async () => {
     set((state) => ({ loading: { ...state.loading, dashboard: true }, error: null }))
@@ -227,4 +237,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setError: (error) => set({ error }),
   clearError: () => set({ error: null }),
+
+  // Wipes every product/inventory/dashboard/snapshot/debtor field back to a
+  // blank slate. Called from authStore.ts's clearSession() so a fast
+  // account switch on a shared PC never leaves the outgoing user's product
+  // catalog/prices visible (or actionable) before the incoming user's
+  // loadProducts() has a chance to refetch — loadProducts() otherwise skips
+  // refetching whenever `products` is already non-empty.
+  reset: () => {
+    if (toastTimeoutId) { clearTimeout(toastTimeoutId); toastTimeoutId = null }
+    inflightKeys.clear()
+    Object.keys(lastLoadTime).forEach((key) => delete lastLoadTime[key])
+    set(createInitialState())
+  },
 }))

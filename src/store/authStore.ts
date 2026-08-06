@@ -8,6 +8,8 @@ import {
   setStoredUser,
   clearStoredAuth,
 } from '../utils/authStorage'
+import { clearQueue as clearOfflineQueue, setActiveUser as setOfflineQueueUser } from './offlineQueue'
+import { useAppStore } from './appStore'
 import type { User } from '../types'
 
 function withoutBlockCode(user: User): User {
@@ -64,6 +66,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     persistRefreshToken(refreshToken)
     persistUser(normalized)
     applyBusinessDayHour(normalized)
+    // Scope the offline mutation queue to this user *before* anything else
+    // can enqueue into it, so a shared-PC account switch never lets one
+    // user's queued edits sync under another user's session (see
+    // offlineQueue.ts's setActiveUser).
+    setOfflineQueueUser(normalized._id ?? null)
     set({ token, refreshToken, user: normalized, isAuthenticated: true })
   },
 
@@ -90,6 +97,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       setRefreshToken(stored.refreshToken)
       set({ token: stored.token, refreshToken: stored.refreshToken, user: stored.user ?? null })
       applyBusinessDayHour(stored.user)
+      // Same scoping as setAuth() above — a resumed session (app restart
+      // without logging out) must resolve to this user's own offline queue
+      // before any screen can enqueue into it.
+      setOfflineQueueUser(stored.user?._id ?? null)
       // isAuthenticated/isLoading are finalized only once revalidation
       // below resolves, so role/blockCode-gated screens never render
       // against stale or foreign data.
@@ -111,6 +122,21 @@ export function clearSession(): void {
   clearApiCache()
   useAuthStore.setState({ token: '', refreshToken: '', user: null, isAuthenticated: false })
   void clearStoredAuth()
+  // Offline queue: drop whatever is still queued for the outgoing user, then
+  // point the queue back at the unscoped/no-user key. This is a deliberate
+  // choice not to attempt a final sync first — this app has no existing
+  // "sync on logout" step, and adding one here would risk hanging/failing
+  // the logout flow on a flaky connection. The trade-off (any genuinely
+  // unsynced edits from this session are lost on logout) is preferred over
+  // the alternative: leaving them queued risks a future user's session
+  // flushing them, which is the actual security bug being fixed.
+  clearOfflineQueue()
+  setOfflineQueueUser(null)
+  // Product/inventory/dashboard/snapshot data is user-visible and
+  // action-affecting (prices, stock) — reset it so a fast account switch on
+  // a shared PC can't briefly show (or let someone act on) the outgoing
+  // user's stale catalog before the next loadProducts() refetches.
+  useAppStore.getState().reset()
   try { void window.electronAPI?.blockClear?.() } catch {}
 }
 
