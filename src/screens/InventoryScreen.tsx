@@ -12,7 +12,7 @@ import { formatMoney, overlay } from '../styles/shared'
 import { getBusinessDate } from '../utils/businessDay'
 import { resolveSellPrice, resolveBuyPrice } from '../utils/inventory'
 import { isOnline, isNetworkError } from '../utils/network'
-import { enqueue } from '../store/offlineQueue'
+import { enqueue, getQueueSnapshot, subscribe as subscribeQueue } from '../store/offlineQueue'
 import type { QueuedInventory } from '../store/offlineQueue'
 
 const parseWholeNumber = (val: string) => Number(val.replace(/\D/g, '')) || 0
@@ -77,8 +77,17 @@ export function InventoryScreen() {
   const [saved, setSaved] = useState(false)
   // Product ids whose current-quantity edit was applied optimistically and
   // queued for background sync (offline or a network failure mid-save).
-  // Simple local marker only — the real sync-status UI lands in a later step.
-  const [pendingOfflineIds, setPendingOfflineIds] = useState<Set<string>>(new Set())
+  // Derived from the real offline queue via offlineQueue.subscribe() (same
+  // pattern Sidebar.tsx uses for the global pending count) rather than
+  // local-only state, so navigating away and back doesn't lose track of
+  // items still actually queued.
+  const [pendingOfflineIds, setPendingOfflineIds] = useState<Set<string>>(
+    () => new Set(getQueueSnapshot().inventory.map((item) => item.productId))
+  )
+
+  useEffect(() => subscribeQueue(() => {
+    setPendingOfflineIds(new Set(getQueueSnapshot().inventory.map((item) => item.productId)))
+  }), [])
 
   const isPastDate = dayjs(selectedDate).isBefore(getBusinessDate(), 'day')
   const isFutureDate = dayjs(selectedDate).isAfter(getBusinessDate(), 'day')
@@ -184,10 +193,11 @@ export function InventoryScreen() {
         deviceId: getDeviceId(),
         updatedAt: new Date().toISOString(),
       }
+      // enqueue() notifies offlineQueue subscribers synchronously, which
+      // updates pendingOfflineIds above — no need to set it here too.
       enqueue('inventory', queuedItem)
     }
 
-    setPendingOfflineIds((prev) => new Set(prev).add(productId))
     setSaved(true)
     showToast(t('inventorySavedOffline'), 'success')
     setTimeout(() => closeModal(), 700)

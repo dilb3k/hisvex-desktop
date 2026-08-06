@@ -9,7 +9,7 @@ import type { Product } from '../types'
 import { resolveSellPrice, resolveBuyPrice } from '../utils/inventory'
 import { isBlockCodeDisabled } from '../utils/blockCode'
 import { isOnline, isNetworkError } from '../utils/network'
-import { enqueue } from '../store/offlineQueue'
+import { enqueue, getQueueSnapshot, subscribe as subscribeQueue } from '../store/offlineQueue'
 import type { QueuedProduct } from '../store/offlineQueue'
 import {
   overlay,
@@ -119,9 +119,18 @@ export function ProductsScreen() {
   const [isRestocking, setIsRestocking] = useState(false)
 
   // Product ids saved/restocked optimistically and queued for background
-  // sync (offline or a network failure mid-request). Simple local marker
-  // only — the real sync-status UI lands in a later step.
-  const [pendingOfflineIds, setPendingOfflineIds] = useState<Set<string>>(new Set())
+  // sync (offline or a network failure mid-request). Derived from the real
+  // offline queue via offlineQueue.subscribe() (same pattern Sidebar.tsx
+  // uses for the global pending count) rather than local-only state, so
+  // navigating away and back doesn't lose track of items still actually
+  // queued — enqueue()/removeSynced() elsewhere keep this in sync.
+  const [pendingOfflineIds, setPendingOfflineIds] = useState<Set<string>>(
+    () => new Set(getQueueSnapshot().product.map((item) => item._id))
+  )
+
+  useEffect(() => subscribeQueue(() => {
+    setPendingOfflineIds(new Set(getQueueSnapshot().product.map((item) => item._id)))
+  }), [])
 
   const blockCode = useAuthStore((s) => s.user?.blockCode ?? null)
   const blockDisabled = isBlockCodeDisabled()
@@ -293,8 +302,9 @@ export function ProductsScreen() {
       deviceId: getDeviceId(),
       updatedAt: now,
     }
+    // enqueue() notifies offlineQueue subscribers synchronously, which
+    // updates pendingOfflineIds above — no need to set it here too.
     enqueue('product', queuedItem)
-    setPendingOfflineIds((prev) => new Set(prev).add(updated._id))
 
     closeProductModal()
     showToast(t('productSavedOffline'), 'success')
@@ -391,8 +401,9 @@ export function ProductsScreen() {
       updatedAt: now,
       createdAt: updated.createdAt ?? now,
     }
+    // enqueue() notifies offlineQueue subscribers synchronously, which
+    // updates pendingOfflineIds above — no need to set it here too.
     enqueue('product', queuedItem)
-    setPendingOfflineIds((prev) => new Set(prev).add(restockProduct._id))
 
     closeRestockModal()
     showToast(t('restockSavedOffline'), 'success')
