@@ -19,11 +19,11 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    proxy: {
-      '/api': {
-        target: 'https://hisvex-prod-api.onrender.com',
-        changeOrigin: true,
-      },
-    },
+    // No dev proxy: src/api/client.ts's axios instance always calls an
+    // absolute baseURL (VITE_API_BASE_URL, defaulting to the prod API) —
+    // nothing in this app makes relative `/api/...` requests that a Vite
+    // dev-server proxy would need to intercept. A `/api` proxy entry was
+    // here previously but was dead config; removed rather than kept as
+    // unused drift.
   },
 })
