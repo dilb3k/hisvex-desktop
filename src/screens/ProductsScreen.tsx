@@ -296,9 +296,7 @@ export function ProductsScreen() {
     if (Number.isNaN(qtyToAdd) || qtyToAdd <= 0) { showToast('To\'g\'ri miqdor kiriting', 'error'); return }
     setIsRestocking(true)
     try {
-      const { data: freshProduct } = await productsApi.getById(restockProduct._id)
-      const currentQty = freshProduct?.quantity ?? restockProduct.quantity ?? 0
-      await productsApi.update(restockProduct._id, { quantity: currentQty + qtyToAdd })
+      await productsApi.restock(restockProduct._id, qtyToAdd)
       closeRestockModal()
       clearApiCache()
       await loadProducts(true)

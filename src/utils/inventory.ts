@@ -1,5 +1,10 @@
 import type { InventoryItem, Product, InventoryMetrics } from '../types'
 
+// Money formatting lives in one place — utils/formatters.ts — and is
+// re-exported here so existing `from '../utils/inventory'` imports keep
+// resolving.
+export { formatMoney } from './formatters'
+
 export interface ProductValidationErrors {
   name: string
   buyPrice: string
@@ -9,19 +14,6 @@ export interface ProductValidationErrors {
 
 export const normalizeDigits = (value: string): string =>
   value.replace(/[^\d]/g, '')
-
-export const parseWholeNumber = (value: string): number => {
-  const normalized = normalizeDigits(value)
-  return normalized ? parseInt(normalized, 10) : 0
-}
-
-export const formatWholeNumber = (value: number): string =>
-  value.toLocaleString('uz-UZ')
-
-export const formatMoney = (value?: number): string => {
-  if (value == null || Number.isNaN(value) || !Number.isFinite(value)) return "0 so'm"
-  return value.toLocaleString('uz-UZ') + " so'm"
-}
 
 export const resolveSellPrice = (item: { sellPrice?: number; price?: number }, product?: { sellPrice?: number; sellingPrice?: number }): number =>
   item.sellPrice ?? item.price ?? product?.sellPrice ?? product?.sellingPrice ?? 0

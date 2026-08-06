@@ -26,10 +26,10 @@ export function SalesScreen() {
       const today = getBusinessDate()
       const { data } = await inventoryApi.getByDate(today, today)
       setInventoryItems(data?.items ?? [])
-    } catch {
-      // handled by loadInventory caller
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : t('error'), 'error')
     }
-  }, [])
+  }, [showToast])
 
   useEffect(() => {
     const load = async () => {

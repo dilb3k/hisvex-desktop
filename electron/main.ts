@@ -7,6 +7,7 @@ const store = new Store({
   encryptionKey: 'hisvex-store-key',
   schema: {
     token: { type: 'string', default: '' },
+    refreshToken: { type: 'string', default: '' },
     user: { type: 'object', default: {} },
     theme: { type: 'string', default: 'dark' },
     windowBounds: {
@@ -46,8 +47,8 @@ function createWindow(): void {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
-      webSecurity: false,
+      sandbox: true,
+      webSecurity: true,
     },
   })
 

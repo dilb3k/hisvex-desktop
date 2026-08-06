@@ -207,22 +207,7 @@ export const summaryItem: CSSProperties = {
   transition: 'all 0.2s',
 }
 
-export const formatMoney = (val?: number) => {
-  if (val == null || Number.isNaN(val) || !Number.isFinite(val)) return "0 so'm"
-  return val.toLocaleString('uz-UZ') + " so'm"
-}
-
-export const formatAmount = (val?: number) => {
-  if (!val) return '0'
-  return val.toLocaleString('uz-UZ')
-}
-
-export const parseFormattedAmount = (text: string) => {
-  return Number(text.replace(/[^\d]/g, '')) || 0
-}
-
-export const formatInputAmount = (text: string) => {
-  const digits = text.replace(/[^\d]/g, '')
-  if (!digits) return ''
-  return Number(digits).toLocaleString('uz-UZ')
-}
+// Money formatting lives in one place — utils/formatters.ts — and is
+// re-exported here so existing `from '../styles/shared'` imports keep
+// resolving.
+export { formatMoney, formatAmount, parseFormattedAmount, formatInputAmount } from '../utils/formatters'

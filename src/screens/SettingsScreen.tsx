@@ -156,7 +156,10 @@ export function SettingsScreen() {
   const handleSaveBusinessDay = useCallback(() => {
     scheduleBusinessDayStartHour(editingHour)
     setShowBusinessDay(false)
-  }, [editingHour])
+    authApi.updateMe({ businessDayStartHour: editingHour }).catch((err: unknown) => {
+      showToast(err instanceof Error ? err.message : t('error'), 'error')
+    })
+  }, [editingHour, showToast])
 
   const focusBlockInput = useCallback(() => {
     setTimeout(() => blockInputRef.current?.focus(), 60)

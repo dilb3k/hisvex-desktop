@@ -73,7 +73,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   toast: { visible: false, message: '', type: 'info' },
 
   loadDashboard: async () => {
-    set((state) => ({ loading: { ...state.loading, dashboard: true } }))
+    set((state) => ({ loading: { ...state.loading, dashboard: true }, error: null }))
     try {
       const { data } = await inventoryApi.getDashboard()
       const today = getBusinessDate()
@@ -97,7 +97,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadProducts: async (force?: boolean) => {
     const { products, loading } = get()
     if (!force && (products.length > 0 || loading.products)) return
-    set((state) => ({ loading: { ...state.loading, products: true } }))
+    set((state) => ({ loading: { ...state.loading, products: true }, error: null }))
     try {
       const { data } = await productsApi.getAll()
       set({ products: data })
@@ -117,6 +117,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const cached = get().inventoryPerDateCache[date]
     if (lastLoad && now - lastLoad < 30000 && cached) return
     inflightKeys.add(cacheKey)
+    set({ error: null })
     try {
       const { data } = await inventoryApi.getByDate(date, date)
       lastLoadTime[cacheKey] = Date.now()
@@ -137,7 +138,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   loadDebtors: async () => {
-    set((state) => ({ loading: { ...state.loading, debtors: true } }))
+    set((state) => ({ loading: { ...state.loading, debtors: true }, error: null }))
     try {
       const { data } = await debtorsApi.getAll()
       set({ debtors: data })
@@ -153,7 +154,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const cacheKey = `snap:${from}:${to}`
     if (inflightKeys.has(cacheKey)) return
     inflightKeys.add(cacheKey)
-    set((state) => ({ loading: { ...state.loading, snapshots: true } }))
+    set((state) => ({ loading: { ...state.loading, snapshots: true }, error: null }))
     try {
       const { data } = await snapshotsApi.getRange(from, to)
       set({ snapshots: data })

@@ -26,6 +26,11 @@ export function initIpcHandlers(ipcMain: IpcMain, store: Store): void {
     store.set('token', token)
   })
   ipcMain.handle('store:clearToken', () => store.set('token', ''))
+  ipcMain.handle('store:getRefreshToken', () => store.get('refreshToken', ''))
+  ipcMain.handle('store:setRefreshToken', (_event, refreshToken: string) => {
+    store.set('refreshToken', refreshToken)
+  })
+  ipcMain.handle('store:clearRefreshToken', () => store.set('refreshToken', ''))
   ipcMain.handle('store:getUser', () => store.get('user', {}))
   ipcMain.handle('store:setUser', (_event, user: unknown) => store.set('user', user))
   ipcMain.handle('store:clearUser', () => store.set('user', {}))

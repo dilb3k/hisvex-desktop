@@ -3,6 +3,14 @@ import dayjs from 'dayjs'
 export const formatCurrency = (amount: number): string =>
   `${formatAmount(amount)} so'm`
 
+// Canonical money formatter (used across screens as `formatMoney`).
+// Guards against null/undefined/NaN/Infinity in addition to formatAmount's
+// own number/string handling.
+export const formatMoney = (value?: number): string => {
+  if (value == null || Number.isNaN(value) || !Number.isFinite(value)) return "0 so'm"
+  return `${formatAmount(value)} so'm`
+}
+
 export const formatDate = (date: string): string =>
   dayjs(date).format('DD MMM YYYY')
 
@@ -11,7 +19,7 @@ export const formatDateTime = (date: string): string =>
 
 export const formatAmount = (value: number | string): string => {
   const num = typeof value === 'string' ? parseFloat(value) : value
-  if (isNaN(num)) return '0'
+  if (typeof num !== 'number' || Number.isNaN(num) || !Number.isFinite(num)) return '0'
   return num.toLocaleString('uz-UZ')
 }
 

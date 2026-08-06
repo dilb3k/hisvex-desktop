@@ -15,6 +15,7 @@ import type {
   User,
 } from '../types'
 import { getBusinessDate } from '../utils/businessDay'
+import { setStoredToken, setStoredRefreshToken } from '../utils/authStorage'
 
 interface InventoryResponse {
   items: InventoryItem[]
@@ -86,12 +87,9 @@ let refreshPromise: Promise<'ok' | 'failed'> | null = null
 function handleSessionExpired(
   error: AxiosError<{ success?: boolean; error?: { message?: string; details?: unknown }; message?: string }>,
 ): Error {
-  apiToken = null
-  apiRefreshToken = null
-  cache.clear()
-  try { localStorage.removeItem('hisvex_token') } catch {}
-  try { localStorage.removeItem('hisvex_refresh') } catch {}
-  try { localStorage.removeItem('hisvex_user') } catch {}
+  // Token/refreshToken/user clearing is owned by the shared session-clear
+  // function (authStore.ts's clearSession), invoked via unauthorizedHandler
+  // below — this avoids duplicating auth-persistence clearing logic here.
   unauthorizedHandler?.()
   window.location.hash = '#/login'
   const data = error.response?.data
@@ -137,8 +135,8 @@ api.interceptors.response.use(
 
           apiToken = newToken
           apiRefreshToken = newRefresh
-          try { localStorage.setItem('hisvex_token', newToken) } catch {}
-          try { localStorage.setItem('hisvex_refresh', newRefresh) } catch {}
+          void setStoredToken(newToken)
+          void setStoredRefreshToken(newRefresh)
           tokensRefreshedHandler?.(newToken, newRefresh)
           return 'ok' as const
         } catch {
@@ -159,11 +157,11 @@ api.interceptors.response.use(
     }
 
     if (error.code === 'ECONNABORTED') {
-      return Promise.reject(new Error("So'rov vaqti tugadi. Internet aloqasini tekshiring."))
+      return Promise.reject(Object.assign(new Error("So'rov vaqti tugadi. Internet aloqasini tekshiring."), { code: 'ECONNABORTED' }))
     }
 
     if (error.code === 'ERR_NETWORK') {
-      return Promise.reject(new Error('Tarmoq xatoligi. Server bilan aloqa yo\'q.'))
+      return Promise.reject(Object.assign(new Error('Tarmoq xatoligi. Server bilan aloqa yo\'q.'), { code: 'ERR_NETWORK' }))
     }
 
     const data = error.response?.data
@@ -216,6 +214,9 @@ export const productsApi = {
 
   update: (id: string, data: Partial<Product>) =>
     api.put<Product>(`/products/${id}`, data),
+
+  restock: (id: string, quantity: number) =>
+    api.patch<Product>(`/products/${id}/restock`, { quantity }),
 
   delete: (id: string) => api.delete(`/products/${id}`),
 }

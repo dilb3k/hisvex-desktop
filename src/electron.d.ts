@@ -2,6 +2,9 @@ interface ElectronAPI {
   getToken: () => Promise<string>
   setToken: (token: string) => Promise<void>
   clearToken: () => Promise<void>
+  getRefreshToken: () => Promise<string>
+  setRefreshToken: (refreshToken: string) => Promise<void>
+  clearRefreshToken: () => Promise<void>
   getUser: () => Promise<unknown>
   setUser: (user: unknown) => Promise<void>
   clearUser: () => Promise<void>
