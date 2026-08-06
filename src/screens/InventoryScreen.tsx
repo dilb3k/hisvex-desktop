@@ -4,13 +4,16 @@ import { useAppStore } from '../store/appStore'
 import dayjs from 'dayjs'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
-import { ChevronLeft, ChevronRight, Package, Search } from 'lucide-react'
+import {
+  ChevronLeft, ChevronRight, Package, Search, Boxes, ShoppingCart, Wallet,
+  TrendingUp, TrendingDown, AlertTriangle, RefreshCw,
+} from 'lucide-react'
 import { t } from '../i18n'
 import { PageHeader } from '../components/PageHeader'
 import type { Product, InventoryItem } from '../types'
 import { formatMoney, overlay } from '../styles/shared'
 import { getBusinessDate } from '../utils/businessDay'
-import { resolveSellPrice, resolveBuyPrice } from '../utils/inventory'
+import { resolveSellPrice, resolveBuyPrice, clampCurrentQuantity } from '../utils/inventory'
 import { isOnline, isNetworkError } from '../utils/network'
 import { enqueue, getQueueSnapshot, subscribe as subscribeQueue } from '../store/offlineQueue'
 import type { QueuedInventory } from '../store/offlineQueue'
@@ -46,10 +49,26 @@ const s: Record<string, React.CSSProperties> = {
   dateText: { fontSize: 16, fontWeight: 700, color: 'var(--color-text)', lineHeight: '22px' },
   weekdayText: { fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: '16px' },
   readOnlyBadge: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 20, background: 'rgba(239,68,68,0.12)', color: 'var(--color-danger)', fontSize: 12, fontWeight: 600, marginLeft: 8 },
-  summaryRow: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 },
-  summaryItem: { padding: '16px 18px', borderRadius: 10, background: 'var(--color-surface)', border: '1px solid var(--color-border)', textAlign: 'center' },
-  summaryLabel: { fontSize: 12, color: 'var(--color-text-secondary)' },
-  summaryValue: { fontSize: 18, fontWeight: 700, marginTop: 2 },
+
+  // KPI row — reuses the Statistics KPI-card visual pattern (icon chip +
+  // label + tabular-nums value) instead of the old flat 4-cell text grid,
+  // so this screen reads as the same app as the redesigned Statistics
+  // screen. Sotildi/Tushum/Foyda get the same metric-identity colors
+  // Statistics uses; Boshlang'ich/Qoldiq stay neutral ink.
+  kpiGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 8 },
+  kpiCard: {
+    background: 'var(--color-surface)', borderRadius: 14, padding: 14, border: '1px solid var(--color-border)',
+    display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+  },
+  kpiIcon: { width: 38, height: 38, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  kpiLabel: { fontSize: 11.5, color: 'var(--color-text-secondary)', marginBottom: 2 },
+  kpiValue: { fontSize: 16, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -0.3 },
+
+  // Quiet equation caption — a single anchor sentence explaining how the
+  // three core numbers relate, styled as muted helper text (not a card),
+  // shown once near the top rather than repeated per row.
+  equationCaption: { fontSize: 12, color: 'var(--color-text-tertiary)', fontWeight: 500, margin: '0 0 16px', textAlign: 'center' },
+
   card: { padding: 18, borderRadius: 12, background: 'var(--color-surface)', border: '1px solid var(--color-border)', marginBottom: 8, cursor: 'pointer', transition: 'box-shadow 0.15s' },
   modal: { width: 440, maxHeight: '90vh', overflowY: 'auto', padding: 24, borderRadius: 14, background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-lg)' },
   modalTitle: { fontSize: 18, fontWeight: 600, marginBottom: 4 },
@@ -58,11 +77,68 @@ const s: Record<string, React.CSSProperties> = {
   fieldLabel: { fontSize: 14, color: 'var(--color-text-secondary)' },
   fieldValue: { fontSize: 14, fontWeight: 600 },
   modalInput: { width: 130, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text)', fontSize: 14, textAlign: 'right', outline: 'none' },
+  modalInputError: { width: 130, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--color-danger)', background: 'var(--color-bg)', color: 'var(--color-text)', fontSize: 14, textAlign: 'right', outline: 'none', boxShadow: '0 0 0 3px var(--color-danger-soft)' },
+  // Explains why "start" is read-only — mobile already has this hint,
+  // ported here so desktop's modal doesn't leave the read-only field
+  // unexplained.
+  startHint: { fontSize: 11.5, color: 'var(--color-text-tertiary)', margin: '4px 0 0', lineHeight: 1.4 },
+  qtyErrorText: { fontSize: 12.5, color: 'var(--color-danger)', fontWeight: 600, margin: '6px 0 0' },
   previewBox: { marginTop: 12, padding: 12, borderRadius: 10, background: 'var(--color-bg)', border: '1px solid var(--color-border)' },
   savedBadge: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 20, background: 'var(--color-success)', color: '#fff', fontSize: 12, fontWeight: 600, animation: 'fadeIn 0.2s ease' },
   spinnerWrap: { display: 'flex', justifyContent: 'center', padding: 80 },
   emptyWrap: { textAlign: 'center', padding: 60, color: 'var(--color-text-secondary)' },
   searchWrap: { position: 'relative', marginBottom: 12 },
+
+  // Error banner — mirrors the Statistics screen's ErrorBanner treatment
+  // (AlertTriangle + danger-soft background) so a genuine fetch failure
+  // reads distinctly from "no inventory today" instead of both collapsing
+  // into the same empty state.
+  errorBanner: {
+    display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px',
+    borderRadius: 14, background: 'var(--color-danger-soft)', border: '1px solid rgba(239,68,68,0.25)',
+    marginBottom: 16,
+  },
+  errorBannerText: { flex: 1, fontSize: 13.5, fontWeight: 600, color: 'var(--color-danger)', margin: 0 },
+  errorBannerRetryBtn: {
+    display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9,
+    border: 'none', background: 'var(--color-danger)', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+    flexShrink: 0,
+  },
+
+  // Loading skeleton — plausible content-shaped placeholders (KPI row +
+  // caption + card list) using the globally-defined `pulse` keyframe,
+  // replacing the old bare spinner.
+  skeletonBlock: { borderRadius: 14, background: 'var(--color-surface)', border: '1px solid var(--color-border)', animation: 'pulse 1.4s ease-in-out infinite' },
+}
+
+function skeletonBlock(h: number, delay = 0): React.CSSProperties {
+  return { ...s.skeletonBlock, height: h, animationDelay: `${delay}s` }
+}
+
+function ErrorBanner({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div style={s.errorBanner} role="alert">
+      <AlertTriangle size={20} color="var(--color-danger)" style={{ flexShrink: 0 }} />
+      <p style={s.errorBannerText}>{t('statsErrorTitle') || "Ma'lumotlarni yuklab bo'lmadi"}</p>
+      <button style={s.errorBannerRetryBtn} onClick={onRetry}>
+        <RefreshCw size={13} />
+        {t('retryLabel') || 'Qayta urinish'}
+      </button>
+    </div>
+  )
+}
+
+function InventorySkeleton() {
+  return (
+    <div>
+      <div style={s.kpiGrid}>
+        {[0, 1, 2, 3, 4].map((i) => <div key={i} style={skeletonBlock(60, i * 0.04)} />)}
+      </div>
+      <div style={{ ...skeletonBlock(12, 0.24), width: 200, margin: '0 auto 18px' }} />
+      <div style={{ ...skeletonBlock(44, 0.28), marginBottom: 12 }} />
+      {[0, 1, 2, 3].map((i) => <div key={i} style={{ ...skeletonBlock(108, 0.32 + i * 0.05), marginBottom: 8 }} />)}
+    </div>
+  )
 }
 
 export function InventoryScreen() {
@@ -70,6 +146,7 @@ export function InventoryScreen() {
   const [selectedDate, setSelectedDate] = useState(getBusinessDate)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
+  const [fetchError, setFetchError] = useState(false)
   const [items, setItems] = useState<InventoryItem[]>([])
   const [selectedEntry, setSelectedEntry] = useState<EnrichedItem | null>(null)
   const [currentQtyInput, setCurrentQtyInput] = useState('')
@@ -94,18 +171,24 @@ export function InventoryScreen() {
   const isEditable = !isPastDate && !isFutureDate
   const refreshKey = useAppStore((s) => s.refreshKey)
 
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
     if (isFutureDate) { setItems([]); setLoading(false); return }
-    let cancelled = false
     setLoading(true)
-    inventoryApi.getByDate(selectedDate, selectedDate)
-      .then(({ data }) => {
-        if (!cancelled) setItems(data?.items ?? [])
-      })
-      .catch(() => { if (!cancelled) setItems([]) })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [selectedDate, isFutureDate, refreshKey])
+    setFetchError(false)
+    try {
+      const { data } = await inventoryApi.getByDate(selectedDate, selectedDate)
+      setItems(data?.items ?? [])
+    } catch {
+      setItems([])
+      setFetchError(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedDate, isFutureDate])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData, refreshKey])
 
   const combinedData = useMemo(() => {
     const result: EnrichedItem[] = []
@@ -143,9 +226,15 @@ export function InventoryScreen() {
   }, [combinedData, search])
 
   const totals = useMemo(() => {
-    let remaining = 0, sold = 0, revenue = 0, profit = 0
-    for (const e of combinedData) { remaining += e.remaining; sold += e.sold; revenue += e.revenue; profit += e.realizedProfit }
-    return { remaining, sold, revenue, profit }
+    let start = 0, remaining = 0, sold = 0, revenue = 0, profit = 0
+    for (const e of combinedData) {
+      start += e.opening
+      remaining += e.remaining
+      sold += e.sold
+      revenue += e.revenue
+      profit += e.realizedProfit
+    }
+    return { start, remaining, sold, revenue, profit }
   }, [combinedData])
 
   const goToPrevDay = useCallback(() => setSelectedDate((prev) => dayjs(prev).subtract(1, 'day').format('YYYY-MM-DD')), [])
@@ -158,16 +247,24 @@ export function InventoryScreen() {
   // derived-field recompute (sold/revenue/realizedProfit) the online path
   // gets from a fresh server response — used both when saving offline and
   // when an online attempt just failed with a network error.
+  //
+  // Also the real guard against a bad "remaining" value ever landing in
+  // local state: `clampCurrentQuantity` (mirrors mobile's
+  // `clampCurrentQuantity(quantity, startQuantity)` formula exactly) is
+  // applied here regardless of what the caller passed in, so even if the
+  // modal's inline validation were somehow bypassed, the applied value can
+  // never exceed the day's opening quantity or drop below zero.
   const applyQuantityLocally = useCallback((productId: string, newQty: number) => {
     setItems((prev) => prev.map((item) => {
       if (item.productId !== productId && item.product?._id !== productId) return item
       const opening = item.startQuantity ?? item.openingQuantity ?? 0
-      const newSold = Math.max(opening - newQty, 0)
+      const safeQty = clampCurrentQuantity(newQty, opening)
+      const newSold = Math.max(opening - safeQty, 0)
       const sp = resolveSellPrice(item, item.product)
       const bp = resolveBuyPrice(item, item.product)
       return {
         ...item,
-        currentQuantity: newQty,
+        currentQuantity: safeQty,
         sold: newSold,
         revenue: newSold * sp,
         realizedProfit: newSold * (sp - bp),
@@ -203,11 +300,26 @@ export function InventoryScreen() {
     setTimeout(() => closeModal(), 700)
   }, [applyQuantityLocally, selectedEntry, showToast])
 
+  // Real-bug fix: entering a "remaining" quantity greater than the day's
+  // opening quantity used to save silently (Math.max just floored the
+  // derived "sold" at 0, hiding the problem). Now it's blocked inline
+  // before save is ever attempted — mirrors mobile's
+  // `cannotAddMoreThanSold` validation.
+  const rawQtyInput = selectedEntry ? parseWholeNumber(currentQtyInput) : 0
+  const isOverCount = !!selectedEntry && isEditable && !isPastDate && rawQtyInput > selectedEntry.opening
+
   const handleSave = async () => {
     if (!selectedEntry || !isEditable) return
+    const rawQty = parseWholeNumber(currentQtyInput)
+    // Block save outright when the typed value exceeds the opening
+    // quantity — the inline error is already visible; this is the actual
+    // gate that prevents the request from ever going out.
+    if (rawQty > selectedEntry.opening) return
+    // Defensive clamp at the persist point itself (matches mobile exactly),
+    // even though rawQty is already guaranteed in-range by the guard above.
+    const newQty = clampCurrentQuantity(rawQty, selectedEntry.opening)
     setSaving(true)
     try {
-      const newQty = parseWholeNumber(currentQtyInput)
       const productId = selectedEntry.inv?.productId ?? selectedEntry.product._id
 
       if (!isOnline()) {
@@ -233,13 +345,13 @@ export function InventoryScreen() {
   }
 
   const preview = useMemo(() => {
-    if (!selectedEntry || !isEditable) return null
+    if (!selectedEntry || !isEditable || isOverCount) return null
     const newCurrent = parseWholeNumber(currentQtyInput)
     const newSold = Math.max(selectedEntry.opening - newCurrent, 0)
     const newRevenue = newSold * selectedEntry.sellPrice
     const newProfit = newSold * (selectedEntry.sellPrice - selectedEntry.buyPrice)
     return { prevSold: selectedEntry.sold, newSold, newRevenue, newProfit }
-  }, [selectedEntry, currentQtyInput, isEditable])
+  }, [selectedEntry, currentQtyInput, isEditable, isOverCount])
 
   const DateInput = forwardRef<HTMLDivElement, { value?: string; onClick?: () => void }>(({ value, onClick }, ref) => (
     <div ref={ref} onClick={onClick} style={s.dateDisplay}>
@@ -260,6 +372,41 @@ export function InventoryScreen() {
       <button onClick={goToNextDay} style={s.dateNavBtn}><ChevronRight size={18} /></button>
     </div>
   )
+
+  const renderKpiRow = () => {
+    const negativeProfit = totals.profit < 0
+    const kpiItems = [
+      { icon: <Boxes size={17} />, label: t('start'), value: String(totals.start), color: 'var(--color-text)', bg: 'rgba(127,127,127,0.12)' },
+      { icon: <Package size={17} />, label: t('remaining'), value: String(totals.remaining), color: 'var(--color-text)', bg: 'rgba(127,127,127,0.12)' },
+      { icon: <ShoppingCart size={17} />, label: t('sold'), value: String(totals.sold), color: 'var(--color-metric-qty)', bg: 'var(--color-metric-qty-soft)' },
+      { icon: <Wallet size={17} />, label: t('revenue'), value: formatMoney(totals.revenue), color: 'var(--color-metric-revenue)', bg: 'var(--color-metric-revenue-soft)' },
+      {
+        icon: negativeProfit ? <TrendingDown size={17} /> : <TrendingUp size={17} />,
+        label: t('profit'),
+        value: formatMoney(totals.profit),
+        color: negativeProfit ? 'var(--color-danger)' : 'var(--color-metric-profit)',
+        bg: negativeProfit ? 'var(--color-danger-soft)' : 'var(--color-metric-profit-soft)',
+      },
+    ]
+    return (
+      <>
+        <div style={s.kpiGrid}>
+          {kpiItems.map((item, i) => (
+            <div key={i} style={s.kpiCard}>
+              <div style={{ ...s.kpiIcon, background: item.bg, color: item.color }}>{item.icon}</div>
+              <div>
+                <div style={s.kpiLabel}>{item.label}</div>
+                <div style={{ ...s.kpiValue, color: item.color }}>{item.value}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Quiet anchor sentence — states the relationship between the
+            three core numbers once, instead of repeating it per row. */}
+        <p style={s.equationCaption}>{t('inventoryEquationCaption')}</p>
+      </>
+    )
+  }
 
   const renderCard = (entry: EnrichedItem) => {
     const status = getStockStatus(entry.remaining)
@@ -334,10 +481,20 @@ export function InventoryScreen() {
           ) : (
             <div>
               <div style={s.fieldRow}><span style={s.fieldLabel}>{t('start')}</span><span style={s.fieldValue}>{selectedEntry.opening}</span></div>
+              {/* Explains why "start" is read-only here — ported from mobile,
+                  which already has this hint. */}
+              <p style={s.startHint}>{t('startQtyAuto')}</p>
               <div style={s.fieldRow}>
                 <span style={s.fieldLabel}>{t('remaining')}</span>
-                <input type="text" value={currentQtyInput} onChange={(e) => setCurrentQtyInput(e.target.value)} style={s.modalInput} inputMode="numeric" />
+                <input
+                  type="text" value={currentQtyInput} onChange={(e) => setCurrentQtyInput(e.target.value)}
+                  style={isOverCount ? s.modalInputError : s.modalInput} inputMode="numeric"
+                  aria-invalid={isOverCount}
+                />
               </div>
+              {isOverCount && (
+                <p style={s.qtyErrorText}>{t('cannotAddMoreThanSold')}</p>
+              )}
               {p && (
                 <div style={s.previewBox}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginBottom: 8 }}>{t('preSaveCheck')}</div>
@@ -357,11 +514,11 @@ export function InventoryScreen() {
             }}>{t('back')}</button>
             {!isPastDate && (
               <button
-                onClick={handleSave} disabled={saving}
+                onClick={handleSave} disabled={saving || isOverCount}
                 style={{
                   padding: '10px 18px', borderRadius: 8, border: 'none',
                   background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600,
-                  cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1,
+                  cursor: (saving || isOverCount) ? 'not-allowed' : 'pointer', opacity: (saving || isOverCount) ? 0.6 : 1,
                   display: saved ? 'none' : undefined,
                 }}
               >{saving ? t('loading') : t('save')}</button>
@@ -390,21 +547,28 @@ export function InventoryScreen() {
         actions={isPastDate ? <span className="badge badge-danger">{t('readOnly')}</span> : undefined}
       />
       {renderDateNav()}
-      {renderSearch()}
-      <div style={s.summaryRow}>
-        <div style={s.summaryItem}><div style={s.summaryLabel}>{t('remaining')}</div><div style={s.summaryValue}>{totals.remaining}</div></div>
-        <div style={s.summaryItem}><div style={s.summaryLabel}>{t('sold')}</div><div style={s.summaryValue}>{totals.sold}</div></div>
-        <div style={s.summaryItem}><div style={s.summaryLabel}>{t('revenue')}</div><div style={s.summaryValue}>{formatMoney(totals.revenue)}</div></div>
-        <div style={s.summaryItem}><div style={s.summaryLabel}>{t('profit')}</div><div style={{ ...s.summaryValue, color: 'var(--color-success)' }}>{formatMoney(totals.profit)}</div></div>
-      </div>
-      {loading && <div style={s.spinnerWrap}><div style={{ width: 28, height: 28, border: '2.5px solid var(--color-border)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>}
-      {!loading && filteredItems.length === 0 && (
-        <div style={s.emptyWrap}>
-          <Package size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
-          <p style={{ fontSize: 15, fontWeight: 500 }}>{t('noInventory')}</p>
-        </div>
+
+      {/* Loading skeleton (no bare spinner) */}
+      {loading && <InventorySkeleton />}
+
+      {/* Error state — distinct from "genuinely empty" */}
+      {!loading && fetchError && <ErrorBanner onRetry={fetchData} />}
+
+      {/* Content: KPI row + equation caption, then search, then list —
+          layout order matches the redesigned Statistics screen's shape. */}
+      {!loading && !fetchError && (
+        <>
+          {renderKpiRow()}
+          {renderSearch()}
+          {filteredItems.length === 0 && (
+            <div style={s.emptyWrap}>
+              <Package size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
+              <p style={{ fontSize: 15, fontWeight: 500 }}>{t('noInventory')}</p>
+            </div>
+          )}
+          {filteredItems.map(entry => renderCard(entry))}
+        </>
       )}
-      {filteredItems.map(entry => renderCard(entry))}
       {selectedEntry && renderModal()}
     </>
   )
@@ -419,16 +583,6 @@ export function InventoryScreen() {
           <p style={{ fontSize: 15, fontWeight: 500 }}>{t('futureDateNotice')}</p>
           <p style={{ fontSize: 13, marginTop: 4 }}>{t('futureDateNoticeText')}</p>
         </div>
-      </div>
-    )
-  }
-
-  if (loading && items.length === 0) {
-    return (
-      <div>
-        <PageHeader title={t('inventory')} />
-        {renderDateNav()}
-        <div style={s.spinnerWrap}><div style={{ width: 32, height: 32, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
       </div>
     )
   }
