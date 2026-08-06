@@ -4,11 +4,16 @@ import 'react-datepicker/dist/react-datepicker.css'
 import { inventoryApi } from '../api/client'
 import { useAppStore } from '../store/appStore'
 import dayjs from 'dayjs'
-import { Download, CalendarClock, RefreshCw, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight, Wallet, ShoppingCart, Percent, Package } from 'lucide-react'
+import {
+  Download, CalendarClock, RefreshCw, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight,
+  Wallet, ShoppingCart, Percent, AlertTriangle,
+} from 'lucide-react'
 import { t } from '../i18n'
 import { getBusinessDate } from '../utils/businessDay'
-import { formatMoney } from '../styles/shared'
+import { formatMoney, spinner } from '../styles/shared'
 import { resolveSellPrice, resolveBuyPrice } from '../utils/inventory'
+import { StatBarChart, type ChartMetric, type ChartBucket } from '../components/StatBarChart'
+import { enumerateDays, enumerateMonths, buildDayBuckets, buildMonthBuckets } from '../utils/statsBuckets'
 import type { InventorySummary } from '../types'
 
 type Period = 'daily' | 'monthly' | 'yearly'
@@ -102,6 +107,17 @@ const STAT_VALUE: React.CSSProperties = {
   fontVariantNumeric: 'tabular-nums',
 }
 
+// The three metric identities used consistently across the KPI accent dots,
+// the Section A chart, and the ranking bar-fill — validated hexes live as
+// CSS custom properties in globals.css (`--color-metric-*`), themed per
+// light/dark. Do not substitute `--color-primary`/`--color-success` here;
+// those failed the dataviz-skill contrast validation for this specific job.
+const METRIC_OPTIONS: { key: ChartMetric; label: string; colorVar: string }[] = [
+  { key: 'revenue', label: t('metricRevenue') || 'Tushum', colorVar: 'var(--color-metric-revenue)' },
+  { key: 'profit', label: t('netProfit') || 'Sof foyda', colorVar: 'var(--color-metric-profit)' },
+  { key: 'qty', label: t('soldPieces') || 'Sotilgan dona', colorVar: 'var(--color-metric-qty)' },
+]
+
 const s = {
   container: { maxWidth: 780, margin: '0 auto' },
   pageHeader: { display: 'flex' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, gap: 12, marginBottom: 18 },
@@ -119,9 +135,6 @@ const s = {
     transition: 'all 0.15s',
   },
   tabsRow: { display: 'flex' as const, alignItems: 'center' as const, gap: 10, marginBottom: 14 },
-  headerRow: { display: 'flex' as const, alignItems: 'center' as const, gap: 10, marginBottom: 16 },
-  headerFlex: { flex: 1 },
-  title: { fontSize: 0, margin: 0 } as React.CSSProperties,
   periodTabs: {
     flex: 1, display: 'flex' as const, background: 'var(--color-surface)', borderRadius: 12, padding: 3,
     border: '1px solid var(--color-border)',
@@ -150,10 +163,12 @@ const s = {
     position: 'relative' as const, display: 'flex' as const, alignItems: 'center' as const, gap: 8,
     fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)', textTransform: 'uppercase' as const, letterSpacing: 1,
   },
-  heroValue: { position: 'relative' as const, fontSize: 34, fontWeight: 800, color: '#fff', marginTop: 8, letterSpacing: -0.5, fontVariantNumeric: 'tabular-nums' as const },
+  // Responsive clamp so full-precision Uzbek-grouped soms (this app's core
+  // promise — never abbreviated) never clip/overflow at any window width.
+  heroValue: { position: 'relative' as const, fontSize: 'clamp(24px, 4.2vw, 34px)', fontWeight: 800, color: '#fff', marginTop: 8, letterSpacing: -0.5, fontVariantNumeric: 'tabular-nums' as const, wordBreak: 'break-word' as const },
   heroChips: { position: 'relative' as const, display: 'flex' as const, gap: 8, marginTop: 14, flexWrap: 'wrap' as const },
-  heroChip: { padding: '5px 12px', borderRadius: 20, background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: 12, fontWeight: 600 },
-  kpiGrid: { display: 'grid' as const, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 14 },
+  heroChip: { padding: '5px 12px', borderRadius: 20, background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: 12, fontWeight: 600, fontVariantNumeric: 'tabular-nums' as const },
+  kpiGrid: { display: 'grid' as const, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 },
   kpiCard: {
     background: 'var(--color-surface)', borderRadius: 14, padding: 16, border: '1px solid var(--color-border)',
     display: 'flex' as const, alignItems: 'center' as const, gap: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
@@ -161,6 +176,44 @@ const s = {
   kpiIcon: { width: 42, height: 42, borderRadius: 12, display: 'flex' as const, alignItems: 'center' as const, justifyContent: 'center' as const, flexShrink: 0 },
   kpiLabel: { fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 2 },
   kpiValue: { fontSize: 18, fontWeight: 800, fontVariantNumeric: 'tabular-nums' as const, letterSpacing: -0.3 },
+
+  // Section eyebrow labels — reuses the existing small-caps convention
+  // already used elsewhere in the app (see ProductsScreen's pre-save-check
+  // label) rather than inventing a new header style.
+  sectionEyebrow: (first?: boolean): React.CSSProperties => ({
+    fontSize: 12, fontWeight: 700, color: 'var(--color-text-secondary)',
+    textTransform: 'uppercase', letterSpacing: 0.6,
+    marginTop: first ? 0 : 26, marginBottom: 10,
+  }),
+  sectionSubtitle: { fontSize: 11.5, color: 'var(--color-text-tertiary)', marginTop: 2, marginBottom: 4, fontWeight: 500 },
+
+  // Chart card (Section A)
+  chartCard: { ...CARD, padding: 18, marginBottom: 0 } as React.CSSProperties,
+  metricSwitch: {
+    display: 'flex' as const, background: 'var(--color-bg)', borderRadius: 10, padding: 3,
+    border: '1px solid var(--color-border)', marginBottom: 14, gap: 2,
+  },
+  metricSwitchBtn: (active: boolean, colorVar: string): React.CSSProperties => ({
+    flex: 1, padding: '7px 4px', border: 'none', borderRadius: 8,
+    background: active ? colorVar : 'transparent',
+    color: active ? '#fff' : 'var(--color-text-secondary)',
+    fontWeight: active ? 700 : 600, fontSize: 12.5, cursor: 'pointer',
+    transition: 'all 0.2s', whiteSpace: 'nowrap' as const,
+  }),
+
+  // Section B — "Ombordagi holat": outline treatment (fill-vs-outline is
+  // the realized-vs-potential encoding, not a new hue).
+  outlineGrid: { display: 'grid' as const, gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 },
+  outlineCard: { padding: 14, borderRadius: 12, border: '1px solid var(--color-border)', background: 'transparent' },
+  outlineCardLabelRow: { display: 'flex' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, gap: 6, marginBottom: 6 },
+  outlineCardLabel: { fontSize: 12, color: 'var(--color-text-secondary)', fontWeight: 500, margin: 0 },
+  outlineCardValue: { fontSize: 18, fontWeight: 700, color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' as const, letterSpacing: -0.2, margin: 0 },
+  estimatedTag: {
+    fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: 0.4,
+    color: 'var(--color-text-tertiary)', border: '1px solid var(--color-border)', borderRadius: 5,
+    padding: '2px 6px', flexShrink: 0,
+  },
+
   detailGrid: { display: 'grid' as const, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 } as React.CSSProperties,
   detailItem: { padding: 12, borderRadius: 10, background: 'rgba(127,127,127,0.06)', border: '1px solid var(--color-border)' },
   detailItemLabel: { fontSize: 11, color: 'var(--color-text-secondary)', margin: 0, marginBottom: 3 },
@@ -183,15 +236,18 @@ const s = {
   rankInfo: { flex: 1, minWidth: 0 },
   rankName: { fontSize: 14, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
   rankMetrics: { display: 'flex' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, marginTop: 2 },
-  rankSub: { fontSize: 12, color: 'var(--color-text-secondary)' },
+  rankSub: { fontSize: 12, color: 'var(--color-text-secondary)', fontVariantNumeric: 'tabular-nums' as const },
   rankProfit: (isBlacklist: boolean, sold: number, profit: number): React.CSSProperties => ({
-    fontSize: 13, fontWeight: 700,
+    display: 'flex' as const, alignItems: 'center' as const, gap: 3,
+    fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums' as const,
     color: profit < 0 ? 'var(--color-danger)' : sold <= 0 ? 'var(--color-text-tertiary)' : isBlacklist ? 'var(--color-warning)' : 'var(--color-primary)',
   }),
   rankBarTrack: { height: 4, borderRadius: 2, background: 'var(--color-border)', marginTop: 6, overflow: 'hidden' as const },
-  rankBarFill: (ratio: number, isBlacklist: boolean): React.CSSProperties => ({
+  // Sold-ratio fill now consistently uses the "Sotilgan dona" identity
+  // color everywhere on this screen (was plain primary-purple before).
+  rankBarFill: (ratio: number): React.CSSProperties => ({
     width: `${ratio * 100}%`, height: '100%', borderRadius: 2,
-    background: isBlacklist ? 'var(--color-danger)' : 'var(--color-primary)',
+    background: 'var(--color-metric-qty)',
     transition: 'width 0.4s ease',
   }),
   dateNav: {
@@ -209,21 +265,8 @@ const s = {
   dateLabel: { flex: 1, textAlign: 'center' as const, cursor: 'pointer', padding: '4px 0' },
   dateLabelText: { fontSize: 15, fontWeight: 700, color: '#fff' },
   dateHintText: { fontSize: 11, color: 'rgba(255,255,255,0.7)' },
-  toolbar: { display: 'flex' as const, gap: 10, marginBottom: 16 },
-  toolbarBtn: {
-    flex: 1, display: 'flex' as const, alignItems: 'center' as const, justifyContent: 'center' as const,
-    gap: 8, padding: '10px 14px', borderRadius: 10, border: '1px solid var(--color-border)',
-    background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-    transition: 'all 0.2s',
-  },
   spinnerWrap: { display: 'flex' as const, flexDirection: 'column' as const, alignItems: 'center' as const, justifyContent: 'center' as const, padding: 60, gap: 12 },
-  spinner: { width: 36, height: 36, border: '3px solid var(--color-border)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' },
   statItem: { width: '50%', marginBottom: 16 },
-  statValueProfit: { ...STAT_VALUE, color: 'var(--color-primary)' },
-  statValueSuccess: { ...STAT_VALUE, color: 'var(--color-success)' },
-  statValueDanger: { ...STAT_VALUE, color: 'var(--color-danger)' },
-  mainKPIContainer: { width: '100%' as const, marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--color-border)' },
-  mainKPIValue: { fontSize: 30, fontWeight: 800, margin: 0, fontVariantNumeric: 'tabular-nums' as const, letterSpacing: -0.5 },
   cardTitle: { fontSize: 15, fontWeight: 700, margin: 0, marginBottom: 12 },
   cardSubtitle: { fontSize: 11, color: 'var(--color-text-secondary)', marginTop: -8, marginBottom: 12 },
   cardBlacklist: { ...CARD, borderColor: 'rgba(239,68,68,0.33)', background: 'rgba(239,68,68,0.03)' },
@@ -251,7 +294,7 @@ const s = {
     background: 'transparent', color: 'var(--color-text-secondary)',
     fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
-  allTimeRangeRow: { display: 'flex' as const, gap: 10, padding: 20 },
+  allTimeRangeRow: { display: 'flex' as const, gap: 10, padding: 20, paddingBottom: 10 },
   rangeBtn: {
     flex: 1, padding: 12, borderRadius: 8, border: '1px solid var(--color-border)',
     background: 'var(--color-bg)', cursor: 'pointer', textAlign: 'left' as const,
@@ -262,20 +305,75 @@ const s = {
     display: 'block' as const, margin: '0 20px 12px', padding: '12px 0', borderRadius: 8, border: 'none',
     background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', width: 'calc(100% - 40px)',
   },
-  pickerModal: { padding: 20 },
-  pickerTitle: { fontSize: 16, fontWeight: 700, textAlign: 'center' as const, marginBottom: 4 },
-  pickerValue: { fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'center' as const, marginBottom: 16 },
-  pickerActions: { display: 'flex' as const, justifyContent: 'flex-end' as const, gap: 8, marginTop: 16 },
   statsGrid: { display: 'flex' as const, flexWrap: 'wrap' as const } as React.CSSProperties,
+
+  // Error banner — mirrors AppLayout's global error-banner treatment
+  // (AlertTriangle + danger-soft background) so this screen's error state
+  // reads consistently with the rest of the app instead of inventing a
+  // new visual language.
+  errorBanner: {
+    display: 'flex' as const, alignItems: 'center' as const, gap: 12, padding: '16px 18px',
+    borderRadius: 14, background: 'var(--color-danger-soft)', border: '1px solid rgba(239,68,68,0.25)',
+    marginBottom: 16,
+  },
+  errorBannerText: { flex: 1, fontSize: 13.5, fontWeight: 600, color: 'var(--color-danger)', margin: 0 },
+  errorBannerRetryBtn: {
+    display: 'flex' as const, alignItems: 'center' as const, gap: 6, padding: '8px 14px', borderRadius: 9,
+    border: 'none', background: 'var(--color-danger)', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+    flexShrink: 0,
+  },
+
+  // Loading skeleton — plausible content-shaped placeholders using the
+  // globally-defined `pulse` keyframe (no bare spinner for this screen).
+  skeletonBlock: (h: number, delay = 0): React.CSSProperties => ({
+    height: h, borderRadius: 16, background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+    animation: 'pulse 1.4s ease-in-out infinite', animationDelay: `${delay}s`,
+  }),
 }
 
-function StatItem({ label, value, highlight, color }: { label: string; value: string | number; highlight?: boolean; color?: string }) {
+function ErrorBanner({ onRetry }: { onRetry: () => void }) {
   return (
-    <div style={s.statItem}>
-      <p style={STAT_LABEL}>{label}</p>
-      <p style={{ ...STAT_VALUE, ...(highlight ? { color: 'var(--color-primary)' } : {}), ...(color ? { color } : {}) } as React.CSSProperties}>
-        {value}
-      </p>
+    <div style={s.errorBanner} role="alert">
+      <AlertTriangle size={20} color="var(--color-danger)" style={{ flexShrink: 0 }} />
+      <p style={s.errorBannerText}>{t('statsErrorTitle') || "Ma'lumotlarni yuklab bo'lmadi"}</p>
+      <button style={s.errorBannerRetryBtn} onClick={onRetry}>
+        <RefreshCw size={13} />
+        {t('retryLabel') || 'Qayta urinish'}
+      </button>
+    </div>
+  )
+}
+
+function StatisticsSkeleton() {
+  return (
+    <div>
+      <div style={{ ...s.skeletonBlock(150), marginBottom: 14 }} />
+      <div style={{ ...s.skeletonBlock(200, 0.08), marginBottom: 16 }} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+        {[0, 1, 2].map((i) => <div key={i} style={s.skeletonBlock(66, 0.1 + i * 0.05)} />)}
+      </div>
+      <div style={{ ...s.skeletonBlock(120, 0.2) }} />
+    </div>
+  )
+}
+
+function MetricSwitch({ value, onChange }: { value: ChartMetric; onChange: (m: ChartMetric) => void }) {
+  return (
+    <div style={s.metricSwitch}>
+      {METRIC_OPTIONS.map((opt) => (
+        <button key={opt.key} onClick={() => onChange(opt.key)} style={s.metricSwitchBtn(value === opt.key, opt.colorVar)}>
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function SectionEyebrow({ children, subtitle, first }: { children: React.ReactNode; subtitle?: string; first?: boolean }) {
+  return (
+    <div>
+      <div style={s.sectionEyebrow(first)}>{children}</div>
+      {subtitle && <div style={s.sectionSubtitle}>{subtitle}</div>}
     </div>
   )
 }
@@ -344,7 +442,7 @@ function buildTotals(summary: InventorySummary | null, items: any[]): Totals {
 const RangeButton = forwardRef<HTMLDivElement, { value?: string; onClick?: () => void; label: string }>(({ value, onClick, label }, ref) => (
   <div ref={ref} onClick={onClick} style={s.rangeBtn}>
     <div style={s.rangeBtnLabel}>{label}</div>
-    <div style={s.rangeBtnValue}>{value}</div>
+    <div style={{ ...s.rangeBtnValue, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
   </div>
 ))
 
@@ -354,6 +452,8 @@ export function StatisticsScreen() {
   const [inventoryItems, setInventoryItems] = useState<any[]>([])
   const [summary, setSummary] = useState<InventorySummary | null>(null)
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(false)
+  const [metric, setMetric] = useState<ChartMetric>('revenue')
   const [showAllTime, setShowAllTime] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [pickerDate, setPickerDate] = useState(selectedDate)
@@ -362,6 +462,17 @@ export function StatisticsScreen() {
   const [allTimeItems, setAllTimeItems] = useState<any[] | null>(null)
   const [allTimeSummary, setAllTimeSummary] = useState<InventorySummary | null>(null)
   const [allTimeLoading, setAllTimeLoading] = useState(false)
+  const [allTimeError, setAllTimeError] = useState(false)
+
+  // Chart data window — for monthly/yearly period tabs the already-fetched
+  // `inventoryItems` range covers the whole month/year, so buckets are
+  // derived from it directly. For the daily tab the main fetch only ever
+  // covers the single selected day (no history to plot), so the chart
+  // fetches its own light 7-day window via the same `inventoryApi.getByDate`
+  // call already used elsewhere on this screen — no new endpoint, no change
+  // to the offline sync/cache layer.
+  const [chartWindowItems, setChartWindowItems] = useState<any[]>([])
+  const [chartWindowLoading, setChartWindowLoading] = useState(false)
 
   const range = useMemo(() => getPeriodRange(period, selectedDate), [period, selectedDate])
   const periodLabel = useMemo(() => formatPeriodLabel(period, selectedDate), [period, selectedDate])
@@ -369,6 +480,7 @@ export function StatisticsScreen() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
+    setFetchError(false)
     try {
       const invRes = await inventoryApi.getByDate(range.from, range.to)
       setInventoryItems(invRes.data?.items ?? [])
@@ -376,6 +488,7 @@ export function StatisticsScreen() {
     } catch {
       setInventoryItems([])
       setSummary(null)
+      setFetchError(true)
     } finally {
       setLoading(false)
     }
@@ -384,6 +497,47 @@ export function StatisticsScreen() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  const chartWindowRange = useMemo(() => {
+    if (period !== 'daily') return null
+    return { from: dayjs(selectedDate).subtract(6, 'day').format('YYYY-MM-DD'), to: selectedDate }
+  }, [period, selectedDate])
+
+  const fetchChartWindow = useCallback(async () => {
+    if (!chartWindowRange) {
+      setChartWindowItems([])
+      return
+    }
+    setChartWindowLoading(true)
+    try {
+      const res = await inventoryApi.getByDate(chartWindowRange.from, chartWindowRange.to)
+      setChartWindowItems(res.data?.items ?? [])
+    } catch {
+      setChartWindowItems([])
+    } finally {
+      setChartWindowLoading(false)
+    }
+  }, [chartWindowRange?.from, chartWindowRange?.to])
+
+  useEffect(() => {
+    fetchChartWindow()
+  }, [fetchChartWindow, refreshKey])
+
+  const chartBuckets = useMemo<ChartBucket[]>(() => {
+    if (period === 'daily') {
+      if (!chartWindowRange) return []
+      const days = enumerateDays(chartWindowRange.from, chartWindowRange.to)
+      return buildDayBuckets(chartWindowItems, days, selectedDate)
+    }
+    if (period === 'monthly') {
+      const days = enumerateDays(range.from, range.to)
+      return buildDayBuckets(inventoryItems, days, selectedDate)
+    }
+    const months = enumerateMonths(range.from, range.to)
+    return buildMonthBuckets(inventoryItems, months, dayjs(selectedDate).format('YYYY-MM'))
+  }, [period, selectedDate, range.from, range.to, inventoryItems, chartWindowItems, chartWindowRange])
+
+  const chartIsLoading = period === 'daily' ? chartWindowLoading : loading
 
   const overallTotals = useMemo(() => {
     if (inventoryItems.length > 0) return buildTotals(summary, inventoryItems)
@@ -431,9 +585,22 @@ export function StatisticsScreen() {
     return buildTotals(allTimeSummary, allTimeItems)
   }, [allTimeItems, allTimeSummary])
 
+  // Reuses the exact Section A chart component. Bucketed monthly when the
+  // selected range spans more than 60 days, daily otherwise.
+  const allTimeChartBuckets = useMemo<ChartBucket[]>(() => {
+    if (!allTimeItems) return []
+    const spanDays = dayjs(allTimeTo).diff(dayjs(allTimeFrom), 'day')
+    if (spanDays > 60) {
+      const months = enumerateMonths(allTimeFrom, allTimeTo)
+      return buildMonthBuckets(allTimeItems, months, dayjs(getBusinessDate()).format('YYYY-MM'))
+    }
+    const days = enumerateDays(allTimeFrom, allTimeTo)
+    return buildDayBuckets(allTimeItems, days, getBusinessDate())
+  }, [allTimeItems, allTimeFrom, allTimeTo])
+
   const handlePrev = useCallback(() => setSelectedDate((d) => navigateDate(period, d, -1)), [period])
   const handleNext = useCallback(() => setSelectedDate((d) => navigateDate(period, d, 1)), [period])
-  const handleRefresh = useCallback(() => fetchData(), [fetchData])
+  const handleRefresh = useCallback(() => { fetchData(); fetchChartWindow() }, [fetchData, fetchChartWindow])
 
   const handleDateLabelClick = () => {
     setPickerDate(selectedDate)
@@ -457,8 +624,11 @@ export function StatisticsScreen() {
     const totals = buildTotals(summary, inventoryItems)
     rows.push(['Jami', '', '', String(totals.soldItems), String(totals.earnedRevenue), String(totals.earnedProfit)])
 
-    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+    // Escape embedded double quotes in every cell before wrapping it in
+    // quotes — a product name/note containing a literal `"` would otherwise
+    // break the CSV's column structure (backported from web's fix).
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -469,6 +639,7 @@ export function StatisticsScreen() {
 
   const fetchAllTime = useCallback(async (from: string, to: string) => {
     setAllTimeLoading(true)
+    setAllTimeError(false)
     try {
       const invRes = await inventoryApi.getByDate(from, to)
       setAllTimeItems(invRes.data?.items ?? [])
@@ -476,6 +647,7 @@ export function StatisticsScreen() {
     } catch {
       setAllTimeItems(null)
       setAllTimeSummary(null)
+      setAllTimeError(true)
     } finally {
       setAllTimeLoading(false)
     }
@@ -501,6 +673,7 @@ export function StatisticsScreen() {
   function renderRankItem(item: ProductRankItem, index: number, isBlacklist: boolean, maxSold = 1) {
     const unsold = item.sold <= 0
     const ratio = item.sold > 0 ? Math.min(item.sold / maxSold, 1) : 0
+    const negative = item.profit < 0
     return (
       <div key={item.id} style={s.rankItem}>
         <div style={s.rankBadge(isBlacklist, index)}>
@@ -509,7 +682,10 @@ export function StatisticsScreen() {
         <div style={s.rankInfo}>
           <div style={s.rankNameRow}>
             <div style={s.rankName}>{item.name}</div>
-            <span style={s.rankProfit(isBlacklist, item.sold, item.profit)}>{formatMoney(item.profit)}</span>
+            <span style={s.rankProfit(isBlacklist, item.sold, item.profit)}>
+              {negative && <TrendingDown size={11} />}
+              {formatMoney(item.profit)}
+            </span>
           </div>
           <div style={s.rankMetrics}>
             <span style={{ ...s.rankSub, ...(unsold ? { color: 'var(--color-text-tertiary)' } : {}) } as React.CSSProperties}>
@@ -517,7 +693,7 @@ export function StatisticsScreen() {
             </span>
           </div>
           <div style={s.rankBarTrack}>
-            <div style={s.rankBarFill(ratio, isBlacklist)} />
+            <div style={s.rankBarFill(ratio)} />
           </div>
         </div>
       </div>
@@ -554,6 +730,8 @@ export function StatisticsScreen() {
     )
   }
 
+  const negativeNetProfit = totals.profit < 0
+
   return (
     <div style={s.container}>
       {/* Page header */}
@@ -574,7 +752,9 @@ export function StatisticsScreen() {
         </div>
       </div>
 
-      {/* Period tabs + refresh */}
+      {/* Section A — "Bu davr" (period tabs + date nav — interaction model unchanged) */}
+      <SectionEyebrow first>{t('statsSectionThisPeriod') || 'Bu davr'}</SectionEyebrow>
+
       <div style={s.tabsRow}>
         <div style={s.periodTabs}>
           {PERIODS.map((p) => (
@@ -588,7 +768,6 @@ export function StatisticsScreen() {
         </button>
       </div>
 
-      {/* Date Navigation */}
       <div style={s.dateNav}>
         <button onClick={handlePrev} style={s.navBtn}><ChevronLeft size={18} /></button>
         <div style={s.dateLabel} onClick={handleDateLabelClick}>
@@ -602,18 +781,16 @@ export function StatisticsScreen() {
         <button onClick={handleNext} style={s.navBtn}><ChevronRight size={18} /></button>
       </div>
 
-      {/* Loading */}
-      {loading && (
-        <div style={s.spinnerWrap}>
-          <div style={s.spinner} />
-          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('loading_data') || 'Yuklanmoqda...'}</span>
-        </div>
-      )}
+      {/* Loading skeleton (no bare spinner) */}
+      {loading && <StatisticsSkeleton />}
+
+      {/* Error state — distinct from "genuinely empty" */}
+      {!loading && fetchError && <ErrorBanner onRetry={fetchData} />}
 
       {/* Content */}
-      {!loading && (
+      {!loading && !fetchError && (
         <>
-          {/* Hero */}
+          {/* Hero — Tushum (revenue), realized, full precision */}
           <div style={s.hero}>
             <div style={s.heroCircle1} />
             <div style={s.heroCircle2} />
@@ -625,57 +802,66 @@ export function StatisticsScreen() {
             </div>
           </div>
 
-          {/* KPI cards */}
+          {/* Trend chart — directly below the hero, single metric at a time */}
+          <div style={{ ...s.chartCard, marginBottom: 16 }}>
+            <MetricSwitch value={metric} onChange={setMetric} />
+            <StatBarChart buckets={chartBuckets} metric={metric} loading={chartIsLoading} emptyText={t('chartNoData') || "Bu davr uchun ma'lumot yo'q"} height={140} />
+          </div>
+
+          {/* KPI cards — realized-period breakdown */}
           <div style={s.kpiGrid}>
             {[
-              { icon: <TrendingUp size={18} />, label: t('netProfit') || 'Sof foyda', value: formatMoney(totals.profit), color: 'var(--color-primary)' },
-              { icon: <ShoppingCart size={18} />, label: t('soldPieces') || 'Sotilgan dona', value: String(totals.sold), color: 'var(--color-success)' },
-              { icon: <Percent size={18} />, label: t('marginPercent') || 'Marja foizi', value: `${margin}%`, color: '#8b5cf6' },
+              {
+                icon: negativeNetProfit ? <TrendingDown size={18} /> : <TrendingUp size={18} />,
+                label: t('netProfit') || 'Sof foyda',
+                value: formatMoney(totals.profit),
+                color: negativeNetProfit ? 'var(--color-danger)' : 'var(--color-metric-profit)',
+              },
+              { icon: <ShoppingCart size={18} />, label: t('soldPieces') || 'Sotilgan dona', value: String(totals.sold), color: 'var(--color-metric-qty)' },
+              { icon: <Percent size={18} />, label: t('marginPercent') || 'Marja foizi', value: `${margin}%`, color: 'var(--color-violet)' },
             ].map((item, i) => (
               <div key={i} style={s.kpiCard}>
                 <div style={{ ...s.kpiIcon, background: `${item.color}1a`, color: item.color }}>{item.icon}</div>
                 <div>
                   <div style={s.kpiLabel}>{item.label}</div>
-                  <div style={s.kpiValue}>{item.value}</div>
+                  <div style={{ ...s.kpiValue, color: item.color === 'var(--color-danger)' ? item.color : 'var(--color-text)' }}>{item.value}</div>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* OverallRangeCard */}
+          {/* Section B — "Ombordagi holat" (stock-at-rest, projected — outline treatment) */}
           {overallTotals && (
-            <div style={CARD}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                <Package size={17} color="var(--color-primary)" />
-                <p style={{ ...STAT_LABEL, fontSize: 13, margin: 0 }}>{periodLabel} - {t('totalRevenueLabel') || 'Umumiy'}</p>
-              </div>
-              <div style={s.detailGrid}>
+            <>
+              <SectionEyebrow subtitle={t('statsSectionInventorySubtitle') || 'Agar barcha qoldiq sotilsa'}>
+                {t('statsSectionInventory') || 'Ombordagi holat'}
+              </SectionEyebrow>
+              <div style={s.outlineGrid}>
                 {[
-                  { label: t('totalSellablePieces'), value: overallTotals.sellableItems },
-                  { label: t('soldPieces') || 'Sotilgan dona', value: overallTotals.soldItems },
-                  { label: t('totalSellValue'), value: formatMoney(overallTotals.sellableValue) },
-                  { label: t('soldValue'), value: formatMoney(overallTotals.earnedRevenue) },
-                  { label: t('potentialProfit'), value: formatMoney(overallTotals.possibleProfit), highlight: true },
-                  { label: t('earnedProfit'), value: formatMoney(overallTotals.earnedProfit), highlight: true },
-                  { label: t('remainingPieces'), value: overallTotals.remainingItems },
+                  { label: t('remainingPieces'), value: String(overallTotals.remainingItems) },
                   { label: t('remainingStockValue'), value: formatMoney(overallTotals.stockValue) },
+                  { label: t('potentialProfit'), value: formatMoney(overallTotals.possibleProfit) },
                 ].map((item, i) => (
-                  <div key={i} style={s.detailItem}>
-                    <p style={s.detailItemLabel}>{item.label}</p>
-                    <p style={s.detailItemValue(!!item.highlight)}>{item.value}</p>
+                  <div key={i} style={s.outlineCard}>
+                    <div style={s.outlineCardLabelRow}>
+                      <p style={s.outlineCardLabel}>{item.label}</p>
+                      <span style={s.estimatedTag}>{t('estimatedTag') || 'taxminiy'}</span>
+                    </div>
+                    <p style={s.outlineCardValue}>{item.value}</p>
                   </div>
                 ))}
               </div>
-            </div>
+            </>
           )}
 
-          {/* Top Products */}
+          {/* Section C — Rankings */}
+          <SectionEyebrow>{t('statsSectionRankings') || 'Reyting'}</SectionEyebrow>
+
           <RankingCardComponent
             title={t('topProductsLabel') || 'Top mahsulotlar'}
             items={topProducts}
           />
 
-          {/* Least Sold */}
           {leastProducts.length > 0 && (
             <RankingCardComponent
               title={t('leastSold') || 'Kam sotilgan'}
@@ -743,20 +929,59 @@ export function StatisticsScreen() {
             </button>
 
             {allTimeLoading ? (
-              <div style={s.spinnerWrap}>
-                <div style={s.spinner} />
+              <div style={{ padding: '0 20px 20px' }}>
+                <div style={{ ...s.chartCard, marginBottom: 12 }}>
+                  <StatBarChart buckets={[]} metric={metric} loading emptyText="" height={110} />
+                </div>
+                <div style={s.spinnerWrap}>
+                  <div style={spinner(32)} />
+                </div>
+              </div>
+            ) : allTimeError ? (
+              <div style={{ padding: '0 20px 20px' }}>
+                <ErrorBanner onRetry={() => fetchAllTime(allTimeFrom, allTimeTo)} />
               </div>
             ) : allTimeTotals ? (
               <div style={{ padding: 20, paddingTop: 0 }}>
+                {/* Trend chart — reuses the exact Section A chart component,
+                    bucketed by month (>60 day range) or day (<=60 days). */}
+                <div style={{ ...s.chartCard, marginBottom: 16 }}>
+                  <MetricSwitch value={metric} onChange={setMetric} />
+                  <StatBarChart buckets={allTimeChartBuckets} metric={metric} height={110} emptyText={t('chartNoData') || "Bu davr uchun ma'lumot yo'q"} />
+                </div>
                 <div style={s.statsGrid}>
-                  <StatItem label={t('totalSellablePieces')} value={allTimeTotals.sellableItems} />
-                  <StatItem label={t('soldPieces') || 'Sotilgan dona'} value={allTimeTotals.soldItems} />
-                  <StatItem label={t('totalSellValue')} value={formatMoney(allTimeTotals.sellableValue)} />
-                  <StatItem label={t('soldValue')} value={formatMoney(allTimeTotals.earnedRevenue)} />
-                  <StatItem label={t('potentialProfit')} value={formatMoney(allTimeTotals.possibleProfit)} highlight />
-                  <StatItem label={t('earnedProfit')} value={formatMoney(allTimeTotals.earnedProfit)} highlight />
-                  <StatItem label={t('remainingPieces')} value={allTimeTotals.remainingItems} />
-                  <StatItem label={t('remainingStockValue')} value={formatMoney(allTimeTotals.stockValue)} />
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('totalSellablePieces')}</p>
+                    <p style={STAT_VALUE}>{allTimeTotals.sellableItems}</p>
+                  </div>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('soldPieces') || 'Sotilgan dona'}</p>
+                    <p style={STAT_VALUE}>{allTimeTotals.soldItems}</p>
+                  </div>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('totalSellValue')}</p>
+                    <p style={STAT_VALUE}>{formatMoney(allTimeTotals.sellableValue)}</p>
+                  </div>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('soldValue')}</p>
+                    <p style={STAT_VALUE}>{formatMoney(allTimeTotals.earnedRevenue)}</p>
+                  </div>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('potentialProfit')}</p>
+                    <p style={{ ...STAT_VALUE, color: 'var(--color-primary)' }}>{formatMoney(allTimeTotals.possibleProfit)}</p>
+                  </div>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('earnedProfit')}</p>
+                    <p style={{ ...STAT_VALUE, color: 'var(--color-primary)' }}>{formatMoney(allTimeTotals.earnedProfit)}</p>
+                  </div>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('remainingPieces')}</p>
+                    <p style={STAT_VALUE}>{allTimeTotals.remainingItems}</p>
+                  </div>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('remainingStockValue')}</p>
+                    <p style={STAT_VALUE}>{formatMoney(allTimeTotals.stockValue)}</p>
+                  </div>
                 </div>
               </div>
             ) : (
