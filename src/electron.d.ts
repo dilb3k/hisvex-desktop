@@ -20,8 +20,8 @@ interface ElectronAPI {
   minimizeWindow: () => Promise<void>
   maximizeWindow: () => Promise<void>
   closeWindow: () => Promise<void>
-  onMenuAction: (callback: (action: string) => void) => void
-  onMaximizeChange: (callback: (maximized: boolean) => void) => void
+  onMenuAction: (callback: (action: string) => void) => () => void
+  onMaximizeChange: (callback: (maximized: boolean) => void) => () => void
   isMaximized: () => Promise<boolean>
   isWindows: () => boolean
 }

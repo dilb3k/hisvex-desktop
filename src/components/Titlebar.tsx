@@ -47,7 +47,12 @@ export function Titlebar() {
   useEffect(() => {
     if (!isWin) return
     window.electronAPI?.isMaximized().then(setMaximized)
-    window.electronAPI?.onMaximizeChange(setMaximized)
+    // onMaximizeChange returns an unsubscribe function — without calling it
+    // on unmount, each mount of this component (e.g. a login/logout cycle
+    // on a shared kiosk PC) leaks another ipcRenderer listener for the
+    // process's lifetime.
+    const unsubscribe = window.electronAPI?.onMaximizeChange(setMaximized)
+    return () => unsubscribe?.()
   }, [])
 
   useEffect(() => {
