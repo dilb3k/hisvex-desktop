@@ -7,6 +7,7 @@ import { t } from '../i18n'
 import { PageHeader } from '../components/PageHeader'
 import type { Product } from '../types'
 import { resolveSellPrice, resolveBuyPrice } from '../utils/inventory'
+import { isBlockCodeDisabled } from '../utils/blockCode'
 import {
   overlay,
   modalContainer,
@@ -115,6 +116,7 @@ export function ProductsScreen() {
   const [isRestocking, setIsRestocking] = useState(false)
 
   const blockCode = useAuthStore((s) => s.user?.blockCode ?? null)
+  const blockDisabled = isBlockCodeDisabled()
 
   const [showPinVerify, setShowPinVerify] = useState(false)
   const [pinInput, setPinInput] = useState('')
@@ -279,7 +281,7 @@ export function ProductsScreen() {
 
   const handleSave = async () => {
     if (!validate()) return
-    if (blockCode) { setShowPinVerify(true); setPinInput(''); return }
+    if (blockCode && !blockDisabled) { setShowPinVerify(true); setPinInput(''); return }
     await execSave()
   }
 
@@ -743,7 +745,7 @@ export function ProductsScreen() {
                 disabled={isSubmitting}
                 style={{ ...btnPrimary, opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, lineHeight: 1 }}
               >
-                {blockCode ? <Lock size={14} color="#fff" style={{ display: 'block' }} /> : null}
+                {blockCode && !blockDisabled ? <Lock size={14} color="#fff" style={{ display: 'block' }} /> : null}
                 {isSubmitting ? t('loading') : t('save')}
               </button>
             </div>

@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useState, forwardRef } from 'react'
+import DatePicker from 'react-datepicker'
+import 'react-datepicker/dist/react-datepicker.css'
 import { authApi } from '../api/client'
 import { useAuthStore } from '../store/authStore'
 import { t } from '../i18n'
@@ -43,6 +45,27 @@ export function LoginScreen() {
   const [focusedField, setFocusedField] = useState<string | null>(null)
   const setAuth = useAuthStore((s) => s.setAuth)
   const isLoginMode = mode === 'login'
+
+  const hourDate = (() => {
+    const d = new Date()
+    const h = parseInt(businessDayStartHour, 10)
+    d.setHours(Number.isInteger(h) && h >= 0 && h <= 23 ? h : 6, 0, 0, 0)
+    return d
+  })()
+
+  const HourInput = forwardRef<HTMLInputElement, { value?: string; onClick?: () => void }>(({ value, onClick }, ref) => (
+    <input
+      ref={ref}
+      onClick={onClick}
+      readOnly
+      value={value ?? ''}
+      onFocus={() => setFocusedField('businessHour')}
+      onBlur={() => setFocusedField(null)}
+      style={inputStyle(focusedField === 'businessHour')}
+      placeholder={t('businessDayStartHourPlaceholder')}
+    />
+  ))
+  HourInput.displayName = 'HourInput'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -171,7 +194,7 @@ export function LoginScreen() {
             boxShadow: '0 12px 40px rgba(124,58,237,0.35)',
           }}>
             <img
-              src="./Hisvex.png" alt="Hisvex"
+              src="./hisvex-logo.png" alt="Hisvex"
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
           </div>
@@ -399,17 +422,17 @@ export function LoginScreen() {
                           ?
                         </button>
                       </div>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={businessDayStartHour}
-                        onChange={(e) => setBusinessDayStartHour(e.target.value.replace(/\D/g, '').slice(0, 2))}
-                        onFocus={() => setFocusedField('businessHour')}
-                        onBlur={() => setFocusedField(null)}
-                        style={inputStyle(focusedField === 'businessHour')}
-                        placeholder={t('businessDayStartHourPlaceholder')}
-                        autoCapitalize="none"
-                        autoCorrect="off"
+                      <DatePicker
+                        selected={hourDate}
+                        onChange={(date: Date | null) => { if (date) setBusinessDayStartHour(String(date.getHours())) }}
+                        showTimeSelect
+                        showTimeSelectOnly
+                        timeIntervals={60}
+                        timeFormat="HH:00"
+                        dateFormat="HH:00"
+                        timeCaption={t('businessDayStartHour')}
+                        customInput={<HourInput />}
+                        popperPlacement="bottom-start"
                       />
                     </div>
                   </>

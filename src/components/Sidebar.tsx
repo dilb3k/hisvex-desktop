@@ -120,7 +120,7 @@ export function Sidebar() {
       }}>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
           <div style={{ width: 40, height: 40, borderRadius: 10, overflow: 'hidden', flexShrink: 0, background: 'transparent' }}>
-            <img src="./Hisvex.png" alt="Hisvex" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img src="./hisvex-logo.png" alt="Hisvex" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
           <span style={{ fontSize: 19, fontWeight: 700, color: 'var(--color-primary)' }}>Hisvex</span>
         </div>

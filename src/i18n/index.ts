@@ -301,6 +301,11 @@ export const translations = {
     blockNext: 'Davom etish',
     blockCodeCurrentHint: 'O\'zgartirish uchun joriy kodni kiriting',
     blockCodePurpose: 'Mahsulotni tahrirlashda himoya kodi (4 xonali)',
+    blockCodeTemporaryOff: 'Vaqtinchalik o\'chirib turish',
+    blockCodeTemporaryOn: 'Qayta yoqish',
+    blockCodeDisabledStatus: 'Vaqtinchalik o\'chirilgan',
+    blockCodeTemporaryOffSaved: 'Blok kod vaqtinchalik o\'chirildi',
+    blockCodeTemporaryOnSaved: 'Blok kod qayta yoqildi',
 
     // Users
     usersTitle: 'Foydalanuvchilar',
@@ -679,6 +684,11 @@ export const translations = {
     blockNext: 'Продолжить',
     blockCodeCurrentHint: 'Введите текущий код для смены',
     blockCodePurpose: 'Защитный код при редактировании товаров (4 цифры)',
+    blockCodeTemporaryOff: 'Временно отключить',
+    blockCodeTemporaryOn: 'Включить снова',
+    blockCodeDisabledStatus: 'Временно отключен',
+    blockCodeTemporaryOffSaved: 'Блок-код временно отключен',
+    blockCodeTemporaryOnSaved: 'Блок-код включен снова',
 
     // Users
     usersTitle: 'Пользователи',

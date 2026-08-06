@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, forwardRef } from 'react'
-import { inventoryApi, resolveImageUrl } from '../api/client'
+import { inventoryApi, resolveImageUrl, clearApiCache } from '../api/client'
 import { useAppStore } from '../store/appStore'
 import dayjs from 'dayjs'
 import DatePicker from 'react-datepicker'
@@ -160,6 +160,8 @@ export function InventoryScreen() {
         }
       }))
       setSaved(true)
+      clearApiCache()
+      await useAppStore.getState().refreshAll()
       setTimeout(() => closeModal(), 700)
     } catch (err: unknown) { showToast(err instanceof Error ? err.message : t('error'), 'error') } finally { setSaving(false) }
   }

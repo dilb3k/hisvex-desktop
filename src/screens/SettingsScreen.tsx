@@ -29,6 +29,7 @@ import {
   getEffectiveFrom,
   scheduleBusinessDayStartHour,
 } from '../utils/businessDay'
+import { isBlockCodeDisabled, setBlockCodeDisabled } from '../utils/blockCode'
 import dayjs from 'dayjs'
 
 const THEMES = [
@@ -82,6 +83,7 @@ export function SettingsScreen() {
   const [pinInputs, setPinInputs] = useState<string[]>(['', '', ''])
   const [pinError, setPinError] = useState<string | null>(null)
   const [isBlockBusy, setIsBlockBusy] = useState(false)
+  const [blockDisabled, setBlockDisabled] = useState(isBlockCodeDisabled)
   const blockInputRef = useRef<HTMLInputElement | null>(null)
   const showToast = useAppStore((s) => s.showToast)
 
@@ -236,6 +238,15 @@ export function SettingsScreen() {
     setPinStep(step + 1)
     focusBlockInput()
   }, [blockCode, showToast, persistBlockCode, focusBlockInput])
+
+  const toggleBlockDisabled = useCallback(() => {
+    setBlockDisabled((prev) => {
+      const next = !prev
+      setBlockCodeDisabled(next)
+      showToast(next ? t('blockCodeTemporaryOffSaved') : t('blockCodeTemporaryOnSaved'), 'success')
+      return next
+    })
+  }, [showToast, t])
 
   const handleRemoveBlock = useCallback(async () => {
     const value = pinInputs[0] ?? ''
@@ -766,7 +777,9 @@ export function SettingsScreen() {
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>{t('blockCode')}</div>
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
-              {blockCode ? t('blockCodeActive') : t('blockCodeInactive')}
+              {blockCode
+                ? (blockDisabled ? t('blockCodeDisabledStatus') : t('blockCodeActive'))
+                : t('blockCodeInactive')}
             </div>
           </div>
           <ChevronRight size={18} style={{ color: 'var(--color-text-secondary)' }} />
@@ -1069,25 +1082,41 @@ export function SettingsScreen() {
                 <div style={{ minHeight: 18, marginBottom: 20 }} />
               )}
 
-              <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {blockCode && pinStep === 0 && (
-                  <button
-                    onClick={handleRemoveBlock}
-                    disabled={isBlockBusy}
-                    style={{
-                      flex: 1,
-                      padding: '13px 0',
-                      borderRadius: 10,
-                      border: '1px solid var(--color-danger)',
-                      background: 'transparent',
-                      color: 'var(--color-danger)',
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: isBlockBusy ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {t('blockCodeRemove')}
-                  </button>
+                  <>
+                    <button
+                      onClick={toggleBlockDisabled}
+                      style={{
+                        padding: '13px 0',
+                        borderRadius: 10,
+                        border: '1px solid var(--color-warning)',
+                        background: 'transparent',
+                        color: 'var(--color-warning)',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {blockDisabled ? t('blockCodeTemporaryOn') : t('blockCodeTemporaryOff')}
+                    </button>
+                    <button
+                      onClick={handleRemoveBlock}
+                      disabled={isBlockBusy}
+                      style={{
+                        padding: '13px 0',
+                        borderRadius: 10,
+                        border: '1px solid var(--color-danger)',
+                        background: 'transparent',
+                        color: 'var(--color-danger)',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: isBlockBusy ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {t('blockCodeRemove')}
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={() => {
@@ -1097,7 +1126,6 @@ export function SettingsScreen() {
                   }}
                   disabled={isBlockBusy || curPin.length !== 4}
                   style={{
-                    flex: 1,
                     padding: '13px 0',
                     borderRadius: 10,
                     border: 'none',
