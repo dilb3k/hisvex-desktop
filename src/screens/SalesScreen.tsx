@@ -1,6 +1,9 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useAppStore } from '../store/appStore'
 import { inventoryApi, resolveImageUrl, getDeviceId } from '../api/client'
+import { isOnline } from '../utils/network'
+import { enqueue } from '../store/offlineQueue'
+import type { QueuedInventory } from '../store/offlineQueue'
 import { Minus, Plus, Package, Scan, Search, ShoppingBag, X } from 'lucide-react'
 import { t } from '../i18n'
 import { PageHeader } from '../components/PageHeader'
@@ -8,9 +11,22 @@ import type { InventoryItem, Product } from '../types'
 import { getBusinessDate } from '../utils/businessDay'
 import { resolveSellPrice, formatMoney } from '../utils/inventory'
 
+// Distinguishes a network-level failure (timeout, no connection, backend
+// unreachable) from a validation failure the backend rejected on purpose
+// (e.g. insufficient stock). Only the former should fall through to the
+// offline checkout path — a validation error must still surface to the
+// cashier exactly as before. api/client.ts's response interceptor tags
+// exactly these two cases with `.code` before rejecting.
+function isNetworkError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const code = (err as { code?: unknown }).code
+  return code === 'ECONNABORTED' || code === 'ERR_NETWORK'
+}
+
 export function SalesScreen() {
   const { products } = useAppStore()
   const showToast = useAppStore((s) => s.showToast)
+  const applyLocalSale = useAppStore((s) => s.applyLocalSale)
 
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<Record<string, number>>({})
@@ -150,6 +166,52 @@ export function SalesScreen() {
     setShowBarcode(false)
   }, [barcodeInput, products, inventoryItems])
 
+  // Applies the sale to local state and queues it for background sync
+  // instead of the direct API call — used both when we're already known to
+  // be offline and when an online attempt just failed with a network error.
+  // This is the path that lets a cashier complete a sale with zero
+  // connectivity: no network round-trip is required, only the client-side
+  // stock checks already enforced by handleAdd/handleBarcodeSubmit above.
+  const recordSaleOffline = useCallback((lines: { productId: string; quantity: number }[], date: string) => {
+    const deviceId = getDeviceId()
+    const updatedAt = new Date().toISOString()
+
+    const updatedByProductId: Record<string, InventoryItem> = {}
+    for (const { productId, quantity } of lines) {
+      const existing = inventoryByProductId[productId]
+      if (!existing) continue
+      updatedByProductId[productId] = {
+        ...existing,
+        currentQuantity: Math.max(0, existing.currentQuantity - quantity),
+      }
+    }
+
+    // Reflect the sale in the UI immediately, as if it had succeeded
+    // against the server.
+    setInventoryItems(prev => prev.map(item => updatedByProductId[item.productId] ?? item))
+    applyLocalSale(date, lines)
+
+    // Queue one pending inventory update per affected product, matching the
+    // SyncPayload shape from step 1. enqueue() upserts by localId, so a
+    // second offline sale for the same product/date before the next sync
+    // simply replaces the pending entry with the latest cumulative quantity.
+    for (const updated of Object.values(updatedByProductId)) {
+      const { product: _product, ...withoutProduct } = updated
+      const queuedItem: QueuedInventory = {
+        ...withoutProduct,
+        localId: updated._id,
+        deviceId,
+        updatedAt,
+      }
+      enqueue('inventory', queuedItem)
+    }
+
+    setCart({})
+    showToast(t('salesSuccessOffline'), 'success')
+    // Deliberately not calling syncEngine.syncNow() here — the background
+    // engine from step 1 already syncs on reconnect and on its own interval.
+  }, [inventoryByProductId, applyLocalSale, showToast])
+
   const handleConfirmSale = useCallback(async () => {
     if (totalPieces === 0 || submitting) return
     setSubmitting(true)
@@ -159,17 +221,31 @@ export function SalesScreen() {
         quantity,
       }))
       const today = getBusinessDate()
-      await inventoryApi.recordSales(today, lines)
-      await loadInventory()
-      setCart({})
-      setSuccess(t('salesSuccess'))
-      setTimeout(() => setSuccess(null), 3000)
+
+      if (!isOnline()) {
+        recordSaleOffline(lines, today)
+        return
+      }
+
+      try {
+        await inventoryApi.recordSales(today, lines)
+        await loadInventory()
+        setCart({})
+        setSuccess(t('salesSuccess'))
+        setTimeout(() => setSuccess(null), 3000)
+      } catch (err: unknown) {
+        if (isNetworkError(err)) {
+          recordSaleOffline(lines, today)
+          return
+        }
+        throw err
+      }
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : t('error'), 'error')
     } finally {
       setSubmitting(false)
     }
-  }, [cartArray, totalPieces, submitting, loadInventory])
+  }, [cartArray, totalPieces, submitting, loadInventory, recordSaleOffline, showToast])
 
   if (loading) {
     return (

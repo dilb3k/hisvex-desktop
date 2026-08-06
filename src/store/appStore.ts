@@ -43,6 +43,7 @@ interface AppState {
   loadSnapshots: (from: string, to: string) => Promise<void>
   loadInventoryByDate: (date: string) => Promise<void>
   setSelectedDate: (date: string) => void
+  applyLocalSale: (date: string, lines: { productId: string; quantity: number }[]) => void
   getInventoryTotals: () => { start: number; current: number; sold: number; revenue: number; profit: number; stockSellValue: number; stockBuyValue: number; stockProfit: number }
   setError: (error: string | null) => void
   clearError: () => void
@@ -168,6 +169,31 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setSelectedDate: (date) => set({ selectedDate: date }),
+
+  // Optimistically applies a sale's quantity deductions to the locally-held
+  // inventory for `date` (cache entry + the live `inventory` array when it's
+  // the selected date), mirroring the shape of a server-confirmed sale
+  // without waiting on one. Used by the offline checkout path in
+  // SalesScreen.tsx so the UI reflects the sale immediately; the actual
+  // server push happens later via offlineQueue + syncEngine.
+  applyLocalSale: (date, lines) => {
+    set((state) => {
+      const cached = state.inventoryPerDateCache[date]
+      if (!cached) return {}
+      const items = cached.items.map((item) => {
+        const line = lines.find((l) => l.productId === item.productId)
+        if (!line) return item
+        return { ...item, currentQuantity: Math.max(0, item.currentQuantity - line.quantity) }
+      })
+      return {
+        inventoryPerDateCache: {
+          ...state.inventoryPerDateCache,
+          [date]: { ...cached, items },
+        },
+        inventory: date === state.selectedDate ? items : state.inventory,
+      }
+    })
+  },
 
   getInventoryTotals: () => {
     const { inventory } = get()
