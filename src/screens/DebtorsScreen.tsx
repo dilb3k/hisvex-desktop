@@ -64,6 +64,13 @@ export function DebtorsScreen() {
   const [adjustAmount, setAdjustAmount] = useState('')
   const [adjustError, setAdjustError] = useState('')
 
+  // Duplicate-submission guard for the create/edit/delete/adjust actions
+  // below — same pattern as ProductsScreen/SalesScreen/UsersScreen's
+  // isSubmitting/saving flags. A single flag is enough here since these
+  // screens' modals are mutually exclusive (only one action can be in
+  // flight from this screen at a time).
+  const [saving, setSaving] = useState(false)
+
   useEffect(() => {
     if (showAddModal) {
       setAddName('')
@@ -140,7 +147,8 @@ export function DebtorsScreen() {
   }
 
   const handleDeleteConfirm = async () => {
-    if (!selectedDebtor) return
+    if (!selectedDebtor || saving) return
+    setSaving(true)
     try {
       await debtorsApi.delete(selectedDebtor._id)
       setShowDeleteConfirm(false)
@@ -148,11 +156,13 @@ export function DebtorsScreen() {
       loadDebtors()
     } catch {
       showToast(t('error'), 'error')
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleAdjust = async (type: 'add' | 'subtract') => {
-    if (!selectedDebtor) return
+    if (!selectedDebtor || saving) return
     setAdjustError('')
     const amount = parseFormattedAmount(adjustAmount)
     if (amount <= 0) return
@@ -161,6 +171,7 @@ export function DebtorsScreen() {
       return
     }
     const adjAmount = type === 'subtract' ? -amount : amount
+    setSaving(true)
     try {
       await debtorsApi.adjust(selectedDebtor._id, adjAmount)
       const { data } = await debtorsApi.getAll()
@@ -170,10 +181,13 @@ export function DebtorsScreen() {
       setAdjustAmount('')
     } catch {
       setAdjustError(t('error') || 'Xatolik yuz berdi')
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleAddSave = async () => {
+    if (saving) return
     let valid = true
     if (!addName.trim()) {
       setAddNameError(t('nameRequired'))
@@ -189,6 +203,7 @@ export function DebtorsScreen() {
       setAddAmountError('')
     }
     if (!valid) return
+    setSaving(true)
     try {
       await debtorsApi.create({
         name: addName.trim(),
@@ -200,16 +215,19 @@ export function DebtorsScreen() {
       loadDebtors()
     } catch {
       setAddNameError(t('error') || 'Xatolik yuz berdi')
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleEditSave = async () => {
-    if (!selectedDebtor) return
+    if (!selectedDebtor || saving) return
     if (!editName.trim()) {
       setEditNameError(t('nameRequired'))
       return
     }
     setEditNameError('')
+    setSaving(true)
     try {
       await debtorsApi.update(selectedDebtor._id, {
         name: editName.trim(),
@@ -221,6 +239,8 @@ export function DebtorsScreen() {
       loadDebtors()
     } catch {
       setEditNameError(t('error') || 'Xatolik yuz berdi')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -497,6 +517,7 @@ export function DebtorsScreen() {
             </div>
             <button
               onClick={handleAddSave}
+              disabled={saving}
               style={{
                 width: '100%',
                 padding: '12px',
@@ -506,10 +527,11 @@ export function DebtorsScreen() {
                 color: '#fff',
                 fontSize: 14,
                 fontWeight: 600,
-                cursor: 'pointer',
+                opacity: saving ? 0.6 : 1,
+                cursor: saving ? 'not-allowed' : 'pointer',
               }}
             >
-              {t('save')}
+              {saving ? t('loading') : t('save')}
             </button>
           </div>
         </div>
@@ -668,6 +690,7 @@ export function DebtorsScreen() {
               </div>
             <button
               onClick={() => handleAdjust('add')}
+              disabled={saving}
               style={{
                 padding: '10px 20px',
                 borderRadius: 8,
@@ -676,7 +699,8 @@ export function DebtorsScreen() {
                 color: '#fff',
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: 'pointer',
+                opacity: saving ? 0.6 : 1,
+                cursor: saving ? 'not-allowed' : 'pointer',
                 whiteSpace: 'nowrap',
               }}
             >
@@ -684,6 +708,7 @@ export function DebtorsScreen() {
             </button>
             <button
               onClick={() => handleAdjust('subtract')}
+              disabled={saving}
               style={{
                 padding: '10px 20px',
                 borderRadius: 8,
@@ -692,7 +717,8 @@ export function DebtorsScreen() {
                 color: '#fff',
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: 'pointer',
+                opacity: saving ? 0.6 : 1,
+                cursor: saving ? 'not-allowed' : 'pointer',
                 whiteSpace: 'nowrap',
               }}
             >
@@ -753,6 +779,7 @@ export function DebtorsScreen() {
             </div>
             <button
               onClick={handleEditSave}
+              disabled={saving}
               style={{
                 width: '100%',
                 padding: '12px',
@@ -762,10 +789,11 @@ export function DebtorsScreen() {
                 color: '#fff',
                 fontSize: 14,
                 fontWeight: 600,
-                cursor: 'pointer',
+                opacity: saving ? 0.6 : 1,
+                cursor: saving ? 'not-allowed' : 'pointer',
               }}
             >
-              {t('save')}
+              {saving ? t('loading') : t('save')}
             </button>
           </div>
         </div>
@@ -811,6 +839,7 @@ export function DebtorsScreen() {
               </button>
               <button
                 onClick={handleDeleteConfirm}
+                disabled={saving}
                 style={{
                   padding: '8px 16px',
                   borderRadius: 6,
@@ -819,7 +848,8 @@ export function DebtorsScreen() {
                   color: '#fff',
                   fontSize: 13,
                   fontWeight: 600,
-                  cursor: 'pointer',
+                  opacity: saving ? 0.6 : 1,
+                  cursor: saving ? 'not-allowed' : 'pointer',
                 }}
               >
                 {t('delete')}
