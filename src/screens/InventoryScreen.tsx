@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, forwardRef } from 'react'
-import { inventoryApi, resolveImageUrl, clearApiCache } from '../api/client'
+import { inventoryApi, resolveImageUrl, clearApiCache, getDeviceId } from '../api/client'
 import { useAppStore } from '../store/appStore'
 import dayjs from 'dayjs'
 import DatePicker from 'react-datepicker'
@@ -11,6 +11,9 @@ import type { Product, InventoryItem } from '../types'
 import { formatMoney, overlay } from '../styles/shared'
 import { getBusinessDate } from '../utils/businessDay'
 import { resolveSellPrice, resolveBuyPrice } from '../utils/inventory'
+import { isOnline, isNetworkError } from '../utils/network'
+import { enqueue } from '../store/offlineQueue'
+import type { QueuedInventory } from '../store/offlineQueue'
 
 const parseWholeNumber = (val: string) => Number(val.replace(/\D/g, '')) || 0
 
@@ -72,6 +75,10 @@ export function InventoryScreen() {
   const [currentQtyInput, setCurrentQtyInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  // Product ids whose current-quantity edit was applied optimistically and
+  // queued for background sync (offline or a network failure mid-save).
+  // Simple local marker only — the real sync-status UI lands in a later step.
+  const [pendingOfflineIds, setPendingOfflineIds] = useState<Set<string>>(new Set())
 
   const isPastDate = dayjs(selectedDate).isBefore(getBusinessDate(), 'day')
   const isFutureDate = dayjs(selectedDate).isAfter(getBusinessDate(), 'day')
@@ -138,31 +145,80 @@ export function InventoryScreen() {
   const openModal = (entry: EnrichedItem) => { setSelectedEntry(entry); setCurrentQtyInput(String(entry.current)); setSaved(false) }
   const closeModal = () => { setSelectedEntry(null); setCurrentQtyInput('') }
 
+  // Applies the edited current-quantity to local state, matching the same
+  // derived-field recompute (sold/revenue/realizedProfit) the online path
+  // gets from a fresh server response — used both when saving offline and
+  // when an online attempt just failed with a network error.
+  const applyQuantityLocally = useCallback((productId: string, newQty: number) => {
+    setItems((prev) => prev.map((item) => {
+      if (item.productId !== productId && item.product?._id !== productId) return item
+      const opening = item.startQuantity ?? item.openingQuantity ?? 0
+      const newSold = Math.max(opening - newQty, 0)
+      const sp = resolveSellPrice(item, item.product)
+      const bp = resolveBuyPrice(item, item.product)
+      return {
+        ...item,
+        currentQuantity: newQty,
+        sold: newSold,
+        revenue: newSold * sp,
+        realizedProfit: newSold * (sp - bp),
+      }
+    }))
+  }, [])
+
+  // Queues the current-quantity edit for background sync instead of the
+  // direct API call, same pattern as SalesScreen's recordSaleOffline: apply
+  // optimistically, enqueue one pending inventory update, show a
+  // non-error success toast. Deliberately not calling syncEngine.syncNow()
+  // here — the background engine already syncs on reconnect and interval.
+  const saveQuantityOffline = useCallback((productId: string, newQty: number) => {
+    applyQuantityLocally(productId, newQty)
+
+    const existing = selectedEntry?.inv
+    if (existing) {
+      const { product: _product, ...withoutProduct } = existing
+      const queuedItem: QueuedInventory = {
+        ...withoutProduct,
+        currentQuantity: newQty,
+        localId: existing._id,
+        deviceId: getDeviceId(),
+        updatedAt: new Date().toISOString(),
+      }
+      enqueue('inventory', queuedItem)
+    }
+
+    setPendingOfflineIds((prev) => new Set(prev).add(productId))
+    setSaved(true)
+    showToast(t('inventorySavedOffline'), 'success')
+    setTimeout(() => closeModal(), 700)
+  }, [applyQuantityLocally, selectedEntry, showToast])
+
   const handleSave = async () => {
     if (!selectedEntry || !isEditable) return
     setSaving(true)
     try {
       const newQty = parseWholeNumber(currentQtyInput)
       const productId = selectedEntry.inv?.productId ?? selectedEntry.product._id
-      await inventoryApi.bulkUpdate([{ productId, currentQuantity: newQty }])
-      setItems((prev) => prev.map((item) => {
-        if (item.productId !== productId && item.product?._id !== productId) return item
-        const opening = item.startQuantity ?? item.openingQuantity ?? 0
-        const newSold = Math.max(opening - newQty, 0)
-        const sp = resolveSellPrice(item, item.product)
-        const bp = resolveBuyPrice(item, item.product)
-        return {
-          ...item,
-          currentQuantity: newQty,
-          sold: newSold,
-          revenue: newSold * sp,
-          realizedProfit: newSold * (sp - bp),
+
+      if (!isOnline()) {
+        saveQuantityOffline(productId, newQty)
+        return
+      }
+
+      try {
+        await inventoryApi.bulkUpdate([{ productId, currentQuantity: newQty }])
+        applyQuantityLocally(productId, newQty)
+        setSaved(true)
+        clearApiCache()
+        await useAppStore.getState().refreshAll()
+        setTimeout(() => closeModal(), 700)
+      } catch (err: unknown) {
+        if (isNetworkError(err)) {
+          saveQuantityOffline(productId, newQty)
+          return
         }
-      }))
-      setSaved(true)
-      clearApiCache()
-      await useAppStore.getState().refreshAll()
-      setTimeout(() => closeModal(), 700)
+        throw err
+      }
     } catch (err: unknown) { showToast(err instanceof Error ? err.message : t('error'), 'error') } finally { setSaving(false) }
   }
 
@@ -197,6 +253,8 @@ export function InventoryScreen() {
 
   const renderCard = (entry: EnrichedItem) => {
     const status = getStockStatus(entry.remaining)
+    const productId = entry.inv?.productId ?? entry.product._id
+    const isPendingSync = pendingOfflineIds.has(productId)
     return (
       <div key={entry.product._id} style={s.card} onClick={() => openModal(entry)}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
@@ -208,7 +266,14 @@ export function InventoryScreen() {
             )}
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text)' }}>{entry.product.name}</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              {entry.product.name}
+              {isPendingSync && (
+                <span title={t('pendingSync')} style={{
+                  width: 7, height: 7, borderRadius: '50%', background: 'var(--color-warning)', flexShrink: 0,
+                }} />
+              )}
+            </div>
             <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 2 }}>{formatMoney(entry.sellPrice)}</div>
           </div>
           <span className={status.cls} style={{ gap: 4 }}>

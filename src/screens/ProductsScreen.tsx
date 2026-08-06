@@ -8,6 +8,9 @@ import { PageHeader } from '../components/PageHeader'
 import type { Product } from '../types'
 import { resolveSellPrice, resolveBuyPrice } from '../utils/inventory'
 import { isBlockCodeDisabled } from '../utils/blockCode'
+import { isOnline, isNetworkError } from '../utils/network'
+import { enqueue } from '../store/offlineQueue'
+import type { QueuedProduct } from '../store/offlineQueue'
 import {
   overlay,
   modalContainer,
@@ -114,6 +117,11 @@ export function ProductsScreen() {
   const [restockProduct, setRestockProduct] = useState<Product | null>(null)
   const [restockQty, setRestockQty] = useState('')
   const [isRestocking, setIsRestocking] = useState(false)
+
+  // Product ids saved/restocked optimistically and queued for background
+  // sync (offline or a network failure mid-request). Simple local marker
+  // only — the real sync-status UI lands in a later step.
+  const [pendingOfflineIds, setPendingOfflineIds] = useState<Set<string>>(new Set())
 
   const blockCode = useAuthStore((s) => s.user?.blockCode ?? null)
   const blockDisabled = isBlockCodeDisabled()
@@ -238,6 +246,60 @@ export function ProductsScreen() {
     return !hasValidationErrors(next)
   }
 
+  // Applies a create/update to appStore.products optimistically and queues
+  // it for background sync, same pattern as SalesScreen's
+  // recordSaleOffline: apply locally, enqueue one pending product update,
+  // show a non-error success toast. Deliberately not calling
+  // syncEngine.syncNow() here — the background engine already syncs on
+  // reconnect and interval.
+  //
+  // A brand-new (offline-created) product has no server _id yet, so it's
+  // given a client-generated localId used as a stand-in `_id` too, mirroring
+  // the backend's own `createLocalId("prd", deviceId)` shape (see
+  // product.service.ts). Once synced, the server assigns its own real _id
+  // for the same localId; syncEngine's product merge reconciles the two so
+  // this placeholder row doesn't linger as a duplicate.
+  const saveProductOffline = useCallback((barcodes: string[]) => {
+    const now = new Date().toISOString()
+    const localId = editingProduct?.localId
+      ?? editingProduct?._id
+      ?? `prd_${getDeviceId()}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+
+    const updated: Product = {
+      ...(editingProduct ?? {}),
+      _id: editingProduct?._id ?? localId,
+      localId,
+      name: form.name.trim(),
+      quantity: Number(form.quantity || 0),
+      buyPrice: parseFormattedAmount(form.buyPrice),
+      sellPrice: parseFormattedAmount(form.sellPrice),
+      barcodes,
+      image: form.image !== undefined ? form.image : editingProduct?.image,
+      createdAt: editingProduct?.createdAt ?? now,
+      updatedAt: now,
+    }
+
+    useAppStore.setState((state) => {
+      const idx = state.products.findIndex((p) => p._id === updated._id)
+      const products = idx >= 0
+        ? state.products.map((p, i) => (i === idx ? updated : p))
+        : [...state.products, updated]
+      return { products }
+    })
+
+    const queuedItem: QueuedProduct = {
+      ...updated,
+      localId,
+      deviceId: getDeviceId(),
+      updatedAt: now,
+    }
+    enqueue('product', queuedItem)
+    setPendingOfflineIds((prev) => new Set(prev).add(updated._id))
+
+    closeProductModal()
+    showToast(t('productSavedOffline'), 'success')
+  }, [form, editingProduct, showToast])
+
   const execSave = useCallback(async () => {
     const barcodes = form.barcodes.filter(Boolean)
     if (barcodes.length) {
@@ -260,6 +322,12 @@ export function ProductsScreen() {
     if (form.image !== undefined && form.image !== editingProduct?.image) {
       payload.image = form.image
     }
+
+    if (!isOnline()) {
+      saveProductOffline(barcodes)
+      return true
+    }
+
     setIsSubmitting(true)
     try {
       if (editingProduct) {
@@ -272,12 +340,16 @@ export function ProductsScreen() {
       await loadProducts(true)
       return true
     } catch (err: unknown) {
+      if (isNetworkError(err)) {
+        saveProductOffline(barcodes)
+        return true
+      }
       showToast(err instanceof Error ? err.message : t('error'), 'error')
       return false
     } finally {
       setIsSubmitting(false)
     }
-  }, [form, editingProduct, loadProducts, products])
+  }, [form, editingProduct, loadProducts, products, saveProductOffline])
 
   const handleSave = async () => {
     if (!validate()) return
@@ -290,10 +362,52 @@ export function ProductsScreen() {
     else { showToast("Blok kod noto'g'ri", 'error'); setPinInput('') }
   }
 
+  // The restock endpoint is atomic server-side (an increment, not a
+  // full-record PUT), which the sync payload has no representation for — a
+  // sync product entry is always a full upsert. So the offline fallback
+  // enqueues the *result* of the increment as a normal full product update,
+  // same as a plain edit; the atomicity guarantee only applies to the
+  // online path, which is unavoidable without an increment concept in the
+  // sync contract.
+  const restockProductOffline = useCallback((qtyToAdd: number) => {
+    if (!restockProduct) return
+    const now = new Date().toISOString()
+    const localId = restockProduct.localId ?? restockProduct._id
+    const updated: Product = {
+      ...restockProduct,
+      quantity: (restockProduct.quantity ?? 0) + qtyToAdd,
+      localId,
+      updatedAt: now,
+    }
+
+    useAppStore.setState((state) => ({
+      products: state.products.map((p) => (p._id === restockProduct._id ? updated : p)),
+    }))
+
+    const queuedItem: QueuedProduct = {
+      ...updated,
+      localId,
+      deviceId: getDeviceId(),
+      updatedAt: now,
+      createdAt: updated.createdAt ?? now,
+    }
+    enqueue('product', queuedItem)
+    setPendingOfflineIds((prev) => new Set(prev).add(restockProduct._id))
+
+    closeRestockModal()
+    showToast(t('restockSavedOffline'), 'success')
+  }, [restockProduct, showToast])
+
   const handleRestock = async () => {
     if (!restockProduct || !restockQty) return
     const qtyToAdd = parseInt(restockQty.replace(/\D/g, ''), 10)
     if (Number.isNaN(qtyToAdd) || qtyToAdd <= 0) { showToast('To\'g\'ri miqdor kiriting', 'error'); return }
+
+    if (!isOnline()) {
+      restockProductOffline(qtyToAdd)
+      return
+    }
+
     setIsRestocking(true)
     try {
       await productsApi.restock(restockProduct._id, qtyToAdd)
@@ -301,14 +415,32 @@ export function ProductsScreen() {
       clearApiCache()
       await loadProducts(true)
     } catch (err: unknown) {
+      if (isNetworkError(err)) {
+        restockProductOffline(qtyToAdd)
+        return
+      }
       showToast(err instanceof Error ? err.message : t('error'), 'error')
     } finally {
       setIsRestocking(false)
     }
   }
 
+  // Unlike create/update/restock, deletion has no representation at all in
+  // the sync contract (comp-bar-server's sync.validation.ts /
+  // syncedProductSchema only ever upserts a product — there is no
+  // "deleted" flag, and sync.service.ts never removes a product record).
+  // Queuing a delete here would silently do nothing once it reached the
+  // server, which is worse than failing loudly. So deletion stays
+  // online-only: offline or on a network failure, we surface a clear error
+  // instead of enqueuing anything.
   const handleDelete = async () => {
     if (!deleteTarget) return
+
+    if (!isOnline()) {
+      showToast(t('deleteOfflineNotAllowed'), 'error')
+      return
+    }
+
     setIsDeleting(true)
     try {
       await productsApi.delete(deleteTarget._id)
@@ -317,6 +449,10 @@ export function ProductsScreen() {
       clearApiCache()
       await loadProducts(true)
     } catch (err: unknown) {
+      if (isNetworkError(err)) {
+        showToast(t('deleteOfflineNotAllowed'), 'error')
+        return
+      }
       showToast(err instanceof Error ? err.message : t('error'), 'error')
     } finally {
       setIsDeleting(false)
@@ -436,7 +572,14 @@ export function ProductsScreen() {
                   </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text)' }}>{item.name}</div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {item.name}
+                      {pendingOfflineIds.has(item._id) && (
+                        <span title={t('pendingSync')} style={{
+                          width: 7, height: 7, borderRadius: '50%', background: 'var(--color-warning)', flexShrink: 0,
+                        }} />
+                      )}
+                    </div>
                     <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 3 }}>
                       {item.displayIndex && item.displayIndex > 0 ? `#${item.displayIndex} · ` : ''}
                       {t('currentQuantity')}: {item.quantity ?? 0}

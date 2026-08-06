@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useAppStore } from '../store/appStore'
 import { inventoryApi, resolveImageUrl, getDeviceId } from '../api/client'
-import { isOnline } from '../utils/network'
+import { isOnline, isNetworkError } from '../utils/network'
 import { enqueue } from '../store/offlineQueue'
 import type { QueuedInventory } from '../store/offlineQueue'
 import { Minus, Plus, Package, Scan, Search, ShoppingBag, X } from 'lucide-react'
@@ -10,18 +10,6 @@ import { PageHeader } from '../components/PageHeader'
 import type { InventoryItem, Product } from '../types'
 import { getBusinessDate } from '../utils/businessDay'
 import { resolveSellPrice, formatMoney } from '../utils/inventory'
-
-// Distinguishes a network-level failure (timeout, no connection, backend
-// unreachable) from a validation failure the backend rejected on purpose
-// (e.g. insufficient stock). Only the former should fall through to the
-// offline checkout path — a validation error must still surface to the
-// cashier exactly as before. api/client.ts's response interceptor tags
-// exactly these two cases with `.code` before rejecting.
-function isNetworkError(err: unknown): boolean {
-  if (!err || typeof err !== 'object') return false
-  const code = (err as { code?: unknown }).code
-  return code === 'ECONNABORTED' || code === 'ERR_NETWORK'
-}
 
 export function SalesScreen() {
   const { products } = useAppStore()

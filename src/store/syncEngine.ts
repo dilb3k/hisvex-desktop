@@ -46,13 +46,34 @@ function mergeById<T extends { _id: string }>(existing: T[], incoming: T[]): T[]
   return Array.from(merged.values())
 }
 
+// Same as mergeById, but also reconciles offline-created products: a
+// product made while offline (ProductsScreen.tsx's saveProductOffline) has
+// no real server _id yet, so it's optimistically stored with its
+// client-generated localId standing in as `_id`. Once that product syncs,
+// the server assigns its own real _id for the same localId (see
+// product.service.ts's createLocalId) and returns it here as `incoming`.
+// Without this, the placeholder row (keyed by localId) and the reconciled
+// row (keyed by the real _id) would both remain in the array as a
+// duplicate. Dropping the placeholder by localId match fixes that.
+function mergeProducts(existing: Product[], incoming: Product[]): Product[] {
+  if (incoming.length === 0) return existing
+  const merged = new Map(existing.map((item) => [item._id, item]))
+  for (const item of incoming) {
+    if (item.localId && item.localId !== item._id && merged.has(item.localId)) {
+      merged.delete(item.localId)
+    }
+    merged.set(item._id, item)
+  }
+  return Array.from(merged.values())
+}
+
 // Applies pulled server updates by merging into appStore's existing arrays
 // via its own setState (the same mechanism authStore.ts's clearSession/
 // hydrateBlockCode use to update state from outside a component), rather
 // than bypassing the store with some parallel piece of state.
 function applyPulledUpdates(response: SyncResponse): void {
   useAppStore.setState((state) => ({
-    products: mergeById<Product>(state.products, response.products ?? []),
+    products: mergeProducts(state.products, response.products ?? []),
     inventory: mergeById<InventoryItem>(state.inventory, response.inventory ?? []),
     snapshots: mergeById<DailySnapshot>(state.snapshots, response.daily ?? []),
   }))

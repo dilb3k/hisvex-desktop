@@ -66,6 +66,22 @@ export function isOnline(): boolean {
 }
 
 /**
+ * Distinguishes a network-level failure (timeout, no connection, backend
+ * unreachable) from a validation failure the backend rejected on purpose
+ * (e.g. insufficient stock, duplicate barcode). Only the former should fall
+ * through to an offline-queue path — a validation error must still surface
+ * to the user exactly as before. api/client.ts's response interceptor tags
+ * exactly these two cases with `.code` before rejecting. Shared by every
+ * screen with an offline-capable mutation (Sales, Inventory, Products) so
+ * the classification stays identical across all of them.
+ */
+export function isNetworkError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const code = (err as { code?: unknown }).code
+  return code === 'ECONNABORTED' || code === 'ERR_NETWORK'
+}
+
+/**
  * Subscribes to online/offline transitions. The listener fires only when the
  * debounced state actually changes. Returns an unsubscribe function.
  */
