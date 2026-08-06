@@ -91,6 +91,7 @@ export function enqueue<K extends QueueKind>(kind: K, item: QueueItemFor<K>): vo
   if (!item || !item.localId) return
   ;(state[kind] as Record<string, QueueItemFor<K>>)[item.localId] = item
   persist()
+  notify()
 }
 
 /** Returns pending items grouped by kind, for building a sync payload. */
@@ -113,10 +114,13 @@ export function removeSynced(kind: QueueKind, localIds: string[]): void {
       changed = true
     }
   }
-  if (changed) persist()
+  if (changed) {
+    persist()
+    notify()
+  }
 }
 
-/** Total pending item count across all kinds, for a future UI badge. */
+/** Total pending item count across all kinds, for the sync-status indicator. */
 export function getPendingCount(): number {
   return (
     Object.keys(state.product).length +
@@ -129,4 +133,32 @@ export function getPendingCount(): number {
 export function clearQueue(): void {
   state = emptyState()
   persist()
+  notify()
+}
+
+const listeners = new Set<() => void>()
+
+function notify(): void {
+  listeners.forEach((listener) => {
+    try {
+      listener()
+    } catch {
+      // A misbehaving listener must not break the rest of the fan-out.
+    }
+  })
+}
+
+/**
+ * Subscribes to any change in the queue (enqueue, a synced item being
+ * removed, or a full clear). The listener takes no arguments — call
+ * getPendingCount() (or getQueueSnapshot()) from it to read the new state.
+ * Returns an unsubscribe function. Mirrors utils/network.ts's
+ * subscribeOnline so UI code (e.g. a sync-status indicator) can treat
+ * queue changes and online-state changes the same way, without polling.
+ */
+export function subscribe(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
 }

@@ -369,6 +369,17 @@ export const translations = {
     // Common
     refresh: 'Yangilash',
     loading_data: 'Yuklanmoqda...',
+
+    // Sync status indicator
+    syncStatusOnline: 'Onlayn',
+    syncStatusOffline: 'Oflayn',
+    syncPendingCount: 'Kutilmoqda: {count}',
+    syncAllSynced: 'Barchasi sinxronlangan',
+    syncNow: 'Hozir sinxronlash',
+    syncingNow: 'Sinxronlanmoqda...',
+    syncSuccessToast: 'Sinxronlash muvaffaqiyatli yakunlandi',
+    syncFailedToast: 'Sinxronlash muvaffaqiyatsiz tugadi',
+    syncOfflineTooltip: "Internet aloqasi yo'q, sinxronlash mumkin emas",
   },
 
   ru: {
@@ -738,6 +749,17 @@ export const translations = {
     // Common
     refresh: 'Обновить',
     loading_data: 'Загрузка...',
+
+    // Sync status indicator
+    syncStatusOnline: 'Онлайн',
+    syncStatusOffline: 'Офлайн',
+    syncPendingCount: 'Ожидает: {count}',
+    syncAllSynced: 'Все синхронизировано',
+    syncNow: 'Синхронизировать сейчас',
+    syncingNow: 'Синхронизация...',
+    syncSuccessToast: 'Синхронизация успешно завершена',
+    syncFailedToast: 'Не удалось синхронизировать',
+    syncOfflineTooltip: 'Нет подключения к интернету, синхронизация недоступна',
   },
 }
 

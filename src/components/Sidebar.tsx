@@ -11,11 +11,17 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  Wifi,
+  WifiOff,
+  UploadCloud,
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { useAppStore } from '../store/appStore'
 import { t } from '../i18n'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { isOnline, subscribeOnline } from '../utils/network'
+import { getPendingCount, subscribe as subscribeQueue } from '../store/offlineQueue'
+import { syncNow } from '../store/syncEngine'
 
 const navItems = [
   { to: '/', icon: BarChart3, labelKey: 'statistics' as const, roles: ['superAdmin', 'admin'] },
@@ -57,8 +63,12 @@ const navLinkCollapsed: React.CSSProperties = {
 export function Sidebar() {
   const { user, logout } = useAuthStore()
   const refreshAll = useAppStore((s) => s.refreshAll)
+  const showToast = useAppStore((s) => s.showToast)
   const [collapsed, setCollapsed] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [online, setOnline] = useState(isOnline())
+  const [pendingCount, setPendingCount] = useState(getPendingCount())
+  const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle')
   const location = useLocation()
 
   const visibleItems = navItems.filter(item => item.roles.includes(user?.role || ''))
@@ -67,6 +77,30 @@ export function Sidebar() {
   const handleRefresh = async () => {
     setRefreshing(true)
     try { await refreshAll() } finally { setRefreshing(false) }
+  }
+
+  // Live connectivity state — no polling needed, network.ts only notifies
+  // on an actual (debounced) online/offline transition.
+  useEffect(() => subscribeOnline(setOnline), [])
+
+  // Live pending-queue count — offlineQueue.subscribe() fires synchronously
+  // on every enqueue/removeSynced/clearQueue, so this updates the instant
+  // an offline action queues something and the instant a sync drains it.
+  useEffect(() => subscribeQueue(() => setPendingCount(getPendingCount())), [])
+
+  const handleSyncNow = async () => {
+    if (syncState === 'syncing') return
+    setSyncState('syncing')
+    const result = await syncNow()
+    setPendingCount(getPendingCount())
+    if (result.ok) {
+      setSyncState('success')
+      showToast(t('syncSuccessToast'), 'success')
+    } else {
+      setSyncState('error')
+      if (online) showToast(result.error || t('syncFailedToast'), 'error')
+    }
+    setTimeout(() => setSyncState('idle'), 2000)
   }
 
   if (collapsed) {
@@ -82,6 +116,35 @@ export function Sidebar() {
           </button>
           <button onClick={handleRefresh} style={iconBtn} title={t('refresh')}>
             <RefreshCw size={20} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+          </button>
+          <button
+            onClick={handleSyncNow}
+            disabled={!online || syncState === 'syncing'}
+            style={{
+              ...iconBtn,
+              position: 'relative',
+              color: !online ? 'var(--color-danger)' : pendingCount > 0 ? 'var(--color-warning)' : 'var(--color-success)',
+              cursor: !online || syncState === 'syncing' ? 'default' : 'pointer',
+              opacity: !online ? 0.6 : 1,
+            }}
+            title={
+              !online
+                ? t('syncOfflineTooltip')
+                : syncState === 'syncing'
+                  ? t('syncingNow')
+                  : pendingCount > 0
+                    ? t('syncPendingCount', { count: pendingCount })
+                    : t('syncAllSynced')
+            }
+          >
+            {online ? <Wifi size={20} style={{ animation: syncState === 'syncing' ? 'pulse 1s ease-in-out infinite' : 'none' }} /> : <WifiOff size={20} />}
+            {pendingCount > 0 && (
+              <span style={{
+                position: 'absolute', top: 6, right: 6, width: 8, height: 8,
+                borderRadius: '50%', background: 'var(--color-warning)',
+                border: '2px solid var(--color-sidebar)',
+              }} />
+            )}
           </button>
         </div>
         <nav style={{ flex: 1, padding: '8px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -145,6 +208,45 @@ export function Sidebar() {
       </nav>
 
       <div style={{ padding: '10px 10px', borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 14px', borderRadius: 12,
+          background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+        }}>
+          <div style={{
+            width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: online ? 'var(--color-success-soft)' : 'var(--color-danger-soft)',
+            color: online ? 'var(--color-success)' : 'var(--color-danger)',
+          }}>
+            {online ? <Wifi size={16} /> : <WifiOff size={16} />}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>
+              {online ? t('syncStatusOnline') : t('syncStatusOffline')}
+            </div>
+            <div style={{ fontSize: 11, color: pendingCount > 0 ? 'var(--color-warning)' : 'var(--color-text-tertiary)' }}>
+              {pendingCount > 0 ? t('syncPendingCount', { count: pendingCount }) : t('syncAllSynced')}
+            </div>
+          </div>
+          <button
+            onClick={handleSyncNow}
+            disabled={!online || syncState === 'syncing'}
+            style={{
+              ...iconBtn, width: 32, height: 32,
+              color: syncState === 'error'
+                ? 'var(--color-danger)'
+                : syncState === 'success'
+                  ? 'var(--color-success)'
+                  : 'var(--color-text-tertiary)',
+              opacity: !online ? 0.5 : 1,
+              cursor: !online || syncState === 'syncing' ? 'default' : 'pointer',
+            }}
+            title={!online ? t('syncOfflineTooltip') : t('syncNow')}
+          >
+            <UploadCloud size={18} style={{ animation: syncState === 'syncing' ? 'spin 1s linear infinite' : 'none' }} />
+          </button>
+        </div>
         {user && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 12,
