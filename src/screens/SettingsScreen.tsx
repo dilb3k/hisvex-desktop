@@ -132,6 +132,9 @@ export function SettingsScreen() {
     setThemeState(code)
     document.documentElement.setAttribute('data-theme', code)
     try { localStorage.setItem('hisvex_theme', code) } catch {}
+    // Keep the main process (native window chrome, nativeTheme.themeSource)
+    // in sync with the in-app choice.
+    try { void window.electronAPI?.setTheme?.(code) } catch {}
   }, [])
 
   const handleSetLanguage = useCallback((code: Language) => {
@@ -243,13 +246,24 @@ export function SettingsScreen() {
   }, [blockCode, showToast, persistBlockCode, focusBlockInput])
 
   const toggleBlockDisabled = useCallback(() => {
+    // Same PIN check as handleRemoveBlock below — disabling protection must
+    // require proof of the current code, otherwise anyone at the PC could
+    // turn the block off with zero verification while removing it correctly
+    // demands the PIN.
+    const value = pinInputs[0] ?? ''
+    if (value !== blockCode) {
+      setPinError(t('blockCodeWrong'))
+      setPinInputs((prev) => { const n = [...prev]; n[0] = ''; return n })
+      focusBlockInput()
+      return
+    }
     setBlockDisabled((prev) => {
       const next = !prev
       setBlockCodeDisabled(next)
       showToast(next ? t('blockCodeTemporaryOffSaved') : t('blockCodeTemporaryOnSaved'), 'success')
       return next
     })
-  }, [showToast, t])
+  }, [pinInputs, blockCode, showToast, focusBlockInput])
 
   const handleRemoveBlock = useCallback(async () => {
     const value = pinInputs[0] ?? ''
