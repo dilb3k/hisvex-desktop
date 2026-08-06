@@ -117,18 +117,34 @@ async function performSync(): Promise<SyncResult> {
   try {
     const { data } = await syncApi.sync(payload)
 
+    // The server validates each queued item independently (e.g. an inventory
+    // edit queued yesterday but only synced after the business day rolled
+    // over comes back PAST_DAY_LOCKED) and reports failures in `rejected`
+    // without failing the whole call. Only drop items the server actually
+    // accepted — removing a rejected item here would silently discard real
+    // unsynced data with no way to recover it.
+    const rejectedLocalIds = new Set(data.rejected.map((item) => item.localId))
     if (queue.product.length > 0) {
-      removeSynced('product', queue.product.map((item) => item.localId))
+      removeSynced('product', queue.product.map((item) => item.localId).filter((id) => !rejectedLocalIds.has(id)))
     }
     if (queue.inventory.length > 0) {
-      removeSynced('inventory', queue.inventory.map((item) => item.localId))
+      removeSynced('inventory', queue.inventory.map((item) => item.localId).filter((id) => !rejectedLocalIds.has(id)))
     }
     if (queue.daily.length > 0) {
-      removeSynced('daily', queue.daily.map((item) => item.localId))
+      removeSynced('daily', queue.daily.map((item) => item.localId).filter((id) => !rejectedLocalIds.has(id)))
     }
 
     applyPulledUpdates(data)
     setLastSyncAt(data.serverTime)
+
+    if (data.rejected.length > 0) {
+      // eslint-disable-next-line no-console
+      console.warn('Sync: some queued items were rejected by the server and remain queued', data.rejected)
+      return {
+        ok: true,
+        error: `${data.rejected.length} ta yozuv sinxronlanmadi (masalan kun yopilgani uchun) — qayta urinib ko'riladi`,
+      }
+    }
 
     return { ok: true }
   } catch (err: unknown) {

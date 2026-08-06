@@ -93,7 +93,15 @@ export function Sidebar() {
     setSyncState('syncing')
     const result = await syncNow()
     setPendingCount(getPendingCount())
-    if (result.ok) {
+    if (result.ok && result.error) {
+      // Partial success: the sync call itself succeeded but the server
+      // rejected some queued items (e.g. a business day that closed while
+      // the item was queued offline) — those stay in the queue rather than
+      // being silently discarded, so surface it distinctly from a full
+      // success without treating it as a hard failure.
+      setSyncState('success')
+      showToast(result.error, 'info')
+    } else if (result.ok) {
       setSyncState('success')
       showToast(t('syncSuccessToast'), 'success')
     } else {
