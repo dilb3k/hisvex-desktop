@@ -174,14 +174,32 @@ export interface DatabaseStats {
 export interface SyncPayload {
   products?: Product[]
   inventory?: InventoryItem[]
+  // Backend accepts either key for daily snapshots (sync.service.ts does
+  // `payload.daily ?? payload.snapshots`) — `daily` is the canonical one,
+  // `snapshots` kept for backward compatibility with older callers.
+  daily?: DailySnapshot[]
   snapshots?: DailySnapshot[]
   lastSyncAt?: string
+  limit?: number
+  offset?: number
+}
+
+export interface SyncRejectedItem {
+  entity: string
+  localId: string
+  reason: string
 }
 
 export interface SyncResponse {
+  accepted: {
+    products: number
+    inventory: number
+    snapshots: number
+  }
+  rejected: SyncRejectedItem[]
   products: Product[]
   inventory: InventoryItem[]
-  snapshots: DailySnapshot[]
-  debtors: Debtor[]
+  daily: DailySnapshot[]
+  hasMore: boolean
   serverTime: string
 }
