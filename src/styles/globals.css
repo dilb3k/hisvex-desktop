@@ -26,6 +26,14 @@
   --color-gold: #e6c079;
   --color-gold-soft: rgba(230, 192, 121, 0.12);
   --color-violet: #8b5cf6;
+  /* Statistics screen — validated data-identity colors (dataviz-skill palette,
+     checked against this theme's dark surface #18181e). Used ONLY for the 3
+     metric identities on the Statistics screen (chart bars, KPI accent dots,
+     ranking bar-fill) — not a substitute for --color-primary/success/info
+     elsewhere in the app. */
+  --color-metric-revenue: #9085e9;
+  --color-metric-profit: #199e70;
+  --color-metric-qty: #3987e5;
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
   --shadow-lg: 0 8px 30px rgba(0,0,0,0.5);
@@ -62,6 +70,9 @@
   --color-gold: #b8860b;
   --color-gold-soft: rgba(184, 134, 11, 0.1);
   --color-violet: #8b5cf6;
+  --color-metric-revenue: #4a3aa7;
+  --color-metric-profit: #1baf7a;
+  --color-metric-qty: #2a78d6;
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
   --shadow-lg: 0 8px 30px rgba(0,0,0,0.12);
