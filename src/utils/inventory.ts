@@ -90,6 +90,18 @@ export const getInventoryMetrics = (
   }
 }
 
+// Guards against saving a "remaining" quantity greater than the day's
+// opening quantity (or below zero) — mirrors mobile's
+// `clampCurrentQuantity` in `src/utils/inventory.ts` exactly (same formula)
+// so the two platforms can't silently diverge on this edge case. Used both
+// as the inline modal validation check (block save, show an error) and as a
+// last-resort guard at the point the value is actually applied/persisted,
+// so a bad value can never be saved even if the UI check is bypassed.
+export const clampCurrentQuantity = (
+  quantity: number,
+  startQuantity: number,
+): number => Math.min(Math.max(quantity, 0), startQuantity)
+
 export interface InventoryTotals {
   start: number
   current: number
