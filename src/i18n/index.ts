@@ -184,6 +184,9 @@ export const translations = {
     salesHint: 'Mahsulot qoldiqlaridan sotish',
     noStock: 'Sotish uchun mahsulot yo\'q',
     enterValidQuantity: 'To\'g\'ri miqdor kiriting',
+    maxStockReached: 'Omborda shuncha bor',
+    barcodeNotFound: 'Barcode bo\'yicha mahsulot topilmadi',
+    clearLine: 'Tozalash',
 
     // Debtors
     debtorsSubtitle: 'Qarzdorlaringizni kuzatib boring',
@@ -576,6 +579,9 @@ export const translations = {
     salesHint: 'Продажа из остатков',
     noStock: 'Нет товаров для продажи',
     enterValidQuantity: 'Введите правильное количество',
+    maxStockReached: 'На складе столько и есть',
+    barcodeNotFound: 'Товар по этому штрихкоду не найден',
+    clearLine: 'Очистить',
 
     // Debtors
     debtorsSubtitle: 'Следите за своими должниками',

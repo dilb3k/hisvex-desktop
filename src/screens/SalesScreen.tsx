@@ -2,14 +2,64 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useAppStore } from '../store/appStore'
 import { inventoryApi, resolveImageUrl, getDeviceId } from '../api/client'
 import { isOnline, isNetworkError } from '../utils/network'
-import { enqueue } from '../store/offlineQueue'
+import { enqueue, getQueueSnapshot, subscribe as subscribeQueue } from '../store/offlineQueue'
 import type { QueuedInventory } from '../store/offlineQueue'
-import { Minus, Plus, Package, Scan, Search, ShoppingBag, X } from 'lucide-react'
+import { Minus, Plus, Package, Scan, Search, ShoppingBag, X, Wallet, ShoppingCart, Trash2, AlertTriangle, RefreshCw } from 'lucide-react'
 import { t } from '../i18n'
 import { PageHeader } from '../components/PageHeader'
 import type { InventoryItem, Product } from '../types'
 import { getBusinessDate } from '../utils/businessDay'
 import { resolveSellPrice, formatMoney } from '../utils/inventory'
+
+// Loading skeleton — content-shaped placeholders (search bar + hint + card
+// list) instead of a bare spinner, matching the pattern already established
+// on the redesigned Statistics/Inventory screens.
+function skeletonBlock(h: number, delay = 0): React.CSSProperties {
+  return {
+    height: h, borderRadius: 12, background: 'var(--color-surface)',
+    border: '1px solid var(--color-border)', animation: 'pulse 1.4s ease-in-out infinite',
+    animationDelay: `${delay}s`,
+  }
+}
+
+function SalesSkeleton() {
+  return (
+    <div>
+      <div style={{ ...skeletonBlock(42), marginBottom: 16 }} />
+      <div style={{ ...skeletonBlock(36), marginBottom: 16 }} />
+      {[0, 1, 2, 3].map((i) => <div key={i} style={{ ...skeletonBlock(90, i * 0.05), marginBottom: 10 }} />)}
+    </div>
+  )
+}
+
+// Error banner — mirrors the Statistics/Inventory screens' ErrorBanner
+// treatment so a genuine fetch failure reads distinctly from "no stock to
+// sell" instead of both collapsing into the same empty state.
+function ErrorBanner({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px',
+      borderRadius: 14, background: 'var(--color-danger-soft)', border: '1px solid rgba(239,68,68,0.25)',
+      marginBottom: 16,
+    }} role="alert">
+      <AlertTriangle size={20} color="var(--color-danger)" style={{ flexShrink: 0 }} />
+      <p style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: 'var(--color-danger)', margin: 0 }}>
+        {t('statsErrorTitle') || "Ma'lumotlarni yuklab bo'lmadi"}
+      </p>
+      <button
+        onClick={onRetry}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9,
+          border: 'none', background: 'var(--color-danger)', color: '#fff', fontSize: 12.5, fontWeight: 700,
+          cursor: 'pointer', flexShrink: 0,
+        }}
+      >
+        <RefreshCw size={13} />
+        {t('retryLabel') || 'Qayta urinish'}
+      </button>
+    </div>
+  )
+}
 
 export function SalesScreen() {
   const { products } = useAppStore()
@@ -22,18 +72,32 @@ export function SalesScreen() {
   const [submitting, setSubmitting] = useState(false)
   const [showBarcode, setShowBarcode] = useState(false)
   const [barcodeInput, setBarcodeInput] = useState('')
+  const [barcodeError, setBarcodeError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
+  const [fetchError, setFetchError] = useState(false)
+  // Product ids with a sale still queued for background sync — same
+  // offlineQueue.subscribe()/getQueueSnapshot() pattern InventoryScreen uses,
+  // so a cashier can see which lines are still unsynced after the
+  // confirmation banner auto-clears or after navigating away and back.
+  const [pendingOfflineIds, setPendingOfflineIds] = useState<Set<string>>(
+    () => new Set(getQueueSnapshot().inventory.map((item) => item.productId))
+  )
+
+  useEffect(() => subscribeQueue(() => {
+    setPendingOfflineIds(new Set(getQueueSnapshot().inventory.map((item) => item.productId)))
+  }), [])
 
   const loadInventory = useCallback(async () => {
     try {
       const today = getBusinessDate()
       const { data } = await inventoryApi.getByDate(today, today)
       setInventoryItems(data?.items ?? [])
-    } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : t('error'), 'error')
+      setFetchError(false)
+    } catch {
+      setFetchError(true)
     }
-  }, [showToast])
+  }, [])
 
   useEffect(() => {
     const load = async () => {
@@ -103,10 +167,16 @@ export function SalesScreen() {
   const handleAdd = useCallback((productId: string, max: number) => {
     setCart(prev => {
       const current = prev[productId] || 0
-      if (current >= max) return prev
+      if (current >= max) {
+        // Real-bug fix: tapping + at the stock limit used to just silently
+        // no-op (the button also disables, but a cashier tapping fast can
+        // easily miss that). Now it always gives explicit feedback.
+        showToast(t('maxStockReached'), 'error')
+        return prev
+      }
       return { ...prev, [productId]: current + 1 }
     })
-  }, [])
+  }, [showToast])
 
   const handleRemove = useCallback((productId: string) => {
     setCart(prev => {
@@ -119,18 +189,30 @@ export function SalesScreen() {
     })
   }, [])
 
+  // One-tap reset of a single cart line to 0, instead of tapping "-"
+  // repeatedly down to zero — a quick undo for an over-added line.
+  const clearLine = useCallback((productId: string) => {
+    setCart(prev => {
+      const { [productId]: _, ...rest } = prev
+      return rest
+    })
+  }, [])
+
   const clearCart = useCallback(() => {
     setCart({})
   }, [])
 
+  // Real-bug fix: this used to silently close the modal on ANY failure
+  // (barcode not found, out of stock, already at cart max) with zero
+  // feedback. Now it keeps the modal open and shows the specific reason,
+  // mirroring the web app's already-correct pattern.
   const handleBarcodeSubmit = useCallback(() => {
     const code = barcodeInput.trim()
     if (!code) return
 
     const product = products.find(p => p.barcodes?.includes(code))
     if (!product) {
-      setBarcodeInput('')
-      setShowBarcode(false)
+      setBarcodeError(t('barcodeNotFound'))
       return
     }
 
@@ -138,21 +220,22 @@ export function SalesScreen() {
       i => i.productId === (product.localId ?? product._id) || i.productId === product._id,
     )
     if (!invItem || invItem.currentQuantity <= 0) {
-      setBarcodeInput('')
-      setShowBarcode(false)
+      setBarcodeError(t('noStock'))
       return
     }
 
     const key = invItem.productId || product._id
-    setCart(prev => {
-      const current = prev[key] || 0
-      if (current >= invItem.currentQuantity) return prev
-      return { ...prev, [key]: current + 1 }
-    })
+    const alreadyInCart = cart[key] || 0
+    if (alreadyInCart >= invItem.currentQuantity) {
+      setBarcodeError(t('maxStockReached'))
+      return
+    }
 
+    setCart(prev => ({ ...prev, [key]: alreadyInCart + 1 }))
     setBarcodeInput('')
+    setBarcodeError(null)
     setShowBarcode(false)
-  }, [barcodeInput, products, inventoryItems])
+  }, [barcodeInput, products, inventoryItems, cart])
 
   // Applies the sale to local state and queues it for background sync
   // instead of the direct API call — used both when we're already known to
@@ -195,10 +278,17 @@ export function SalesScreen() {
     }
 
     setCart({})
-    showToast(t('salesSuccessOffline'), 'success')
+    // Unified with the online path: both now show the SAME inline banner
+    // element (just different wording), instead of online=banner /
+    // offline=toast — two different confirmation UIs made it impossible for
+    // a cashier to learn one consistent "sale went through" signal. The
+    // pendingOfflineIds dot on each product card (below) covers the
+    // "is it still queued?" question after this banner clears.
+    setSuccess(t('salesSuccessOffline'))
+    setTimeout(() => setSuccess(null), 4000)
     // Deliberately not calling syncEngine.syncNow() here — the background
     // engine from step 1 already syncs on reconnect and on its own interval.
-  }, [inventoryByProductId, applyLocalSale, showToast])
+  }, [inventoryByProductId, applyLocalSale])
 
   const handleConfirmSale = useCallback(async () => {
     if (totalPieces === 0 || submitting) return
@@ -237,15 +327,9 @@ export function SalesScreen() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 300 }}>
-        <div style={{
-          width: 32,
-          height: 32,
-          border: '3px solid var(--color-border)',
-          borderTopColor: 'var(--color-primary)',
-          borderRadius: '50%',
-          animation: 'spin 0.8s linear infinite',
-        }} />
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <PageHeader title={t('sales')} subtitle={t('salesSubtitle')} />
+        <SalesSkeleton />
       </div>
     )
   }
@@ -259,7 +343,7 @@ export function SalesScreen() {
         title={t('sales')}
         subtitle={t('salesSubtitle')}
         actions={
-          <button onClick={() => setShowBarcode(true)} className="btn btn-secondary btn-icon" title={t('scanBarcode')}>
+          <button onClick={() => { setBarcodeError(null); setShowBarcode(true) }} className="btn btn-secondary btn-icon" title={t('scanBarcode')}>
             <Scan size={18} />
           </button>
         }
@@ -319,6 +403,9 @@ export function SalesScreen() {
       }}>
         {t('salesHint')}
       </p>
+
+      {/* Genuine fetch failure — distinct from "no stock to sell" */}
+      {fetchError && <ErrorBanner onRetry={loadInventory} />}
 
       {success && (
         <div style={{
@@ -398,8 +485,16 @@ export function SalesScreen() {
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
                       }}>
-                        {product?.name || 'N/A'}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{product?.name || 'N/A'}</span>
+                        {pendingOfflineIds.has(item.productId) && (
+                          <span title={t('pendingSync')} style={{
+                            width: 7, height: 7, borderRadius: '50%', background: 'var(--color-warning)', flexShrink: 0,
+                          }} />
+                        )}
                       </p>
                       <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 1 }}>
                         {t('sellPrice')}: <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{formatMoney(price)}</span>
@@ -441,7 +536,6 @@ export function SalesScreen() {
                       </span>
                       <button
                         onClick={() => handleAdd(item.productId, item.currentQuantity)}
-                        disabled={cartQty >= item.currentQuantity}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -463,7 +557,7 @@ export function SalesScreen() {
 
                   {isActive && (
                     <div style={{
-                      padding: '8px 16px',
+                      padding: '8px 12px 8px 16px',
                       borderTop: '1px solid var(--color-border)',
                       background: 'var(--color-primary-soft)',
                       display: 'flex',
@@ -474,7 +568,22 @@ export function SalesScreen() {
                       fontWeight: 600,
                     }}>
                       <span>{t('saleTotal')}:</span>
-                      <span>{formatMoney(cartQty * price)}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span>{formatMoney(cartQty * price)}</span>
+                        {/* One-tap line reset — avoids tapping "-" repeatedly
+                            down to zero to undo an over-added line. */}
+                        <button
+                          onClick={() => clearLine(item.productId)}
+                          title={t('clearLine')}
+                          style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            width: 26, height: 26, borderRadius: 7, border: 'none',
+                            background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer',
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -509,22 +618,30 @@ export function SalesScreen() {
               autoFocus
               placeholder={t('barcode')}
               value={barcodeInput}
-              onChange={e => setBarcodeInput(e.target.value)}
+              onChange={e => { setBarcodeInput(e.target.value); setBarcodeError(null) }}
               onKeyDown={e => { if (e.key === 'Enter') handleBarcodeSubmit() }}
               style={{
                 width: '100%',
                 padding: '10px 12px',
                 borderRadius: 8,
-                border: '1px solid var(--color-border)',
+                border: `1px solid ${barcodeError ? 'var(--color-danger)' : 'var(--color-border)'}`,
                 background: 'var(--color-bg)',
                 color: 'var(--color-text)',
                 fontSize: 16,
                 fontFamily: 'monospace',
                 outline: 'none',
-                marginBottom: 16,
+                marginBottom: barcodeError ? 8 : 16,
                 boxSizing: 'border-box',
               }}
             />
+            {/* Real-bug fix: this used to blind-close on any failure with
+                zero feedback. Now the reason stays visible and the modal
+                stays open so the cashier can correct/retry immediately. */}
+            {barcodeError && (
+              <p style={{ fontSize: 12.5, color: 'var(--color-danger)', fontWeight: 600, margin: '0 0 16px' }}>
+                {barcodeError}
+              </p>
+            )}
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={handleBarcodeSubmit}
@@ -543,7 +660,7 @@ export function SalesScreen() {
                 {t('confirm')}
               </button>
               <button
-                onClick={() => { setShowBarcode(false); setBarcodeInput('') }}
+                onClick={() => { setShowBarcode(false); setBarcodeInput(''); setBarcodeError(null) }}
                 style={{
                   flex: 1,
                   padding: '10px 0',
@@ -570,23 +687,46 @@ export function SalesScreen() {
         borderRadius: '12px 12px 0 0',
         padding: '12px 16px',
       }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 10,
-        }}>
-          <div>
-            <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('saleTotal')}: </span>
-            <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text)' }}>
-              {formatMoney(totalRevenue)}
-            </span>
+        {/* Running-total KPI chips — same icon-chip + label + tabular-nums
+            value pattern, and the same --color-metric-revenue/qty identity
+            colors, as the redesigned Statistics/Inventory screens. Replaces
+            the old plain-text pairs, which sat visually quieter than the
+            buttons below them despite being the most important thing to see
+            mid-sale. */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+          <div style={{
+            flex: 1.4, display: 'flex', alignItems: 'center', gap: 10,
+            background: 'var(--color-metric-revenue-soft)', borderRadius: 12, padding: '10px 12px',
+          }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: 10, background: 'var(--color-surface)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              color: 'var(--color-metric-revenue)',
+            }}><Wallet size={17} /></div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{t('saleTotal')}</div>
+              <div style={{
+                fontSize: 19, fontWeight: 800, color: 'var(--color-metric-revenue)',
+                fontVariantNumeric: 'tabular-nums', letterSpacing: -0.3,
+              }}>{formatMoney(totalRevenue)}</div>
+            </div>
           </div>
-          <div>
-            <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('soldPieces')}: </span>
-            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)' }}>
-              {totalPieces}
-            </span>
+          <div style={{
+            flex: 1, display: 'flex', alignItems: 'center', gap: 10,
+            background: 'var(--color-metric-qty-soft)', borderRadius: 12, padding: '10px 12px',
+          }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: 10, background: 'var(--color-surface)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              color: 'var(--color-metric-qty)',
+            }}><ShoppingCart size={17} /></div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{t('soldPieces')}</div>
+              <div style={{
+                fontSize: 19, fontWeight: 800, color: 'var(--color-metric-qty)',
+                fontVariantNumeric: 'tabular-nums',
+              }}>{totalPieces}</div>
+            </div>
           </div>
         </div>
 
@@ -614,7 +754,7 @@ export function SalesScreen() {
             {t('cancel')}
           </button>
           <button
-            onClick={() => setShowBarcode(true)}
+            onClick={() => { setBarcodeError(null); setShowBarcode(true) }}
             style={{
               display: 'flex',
               alignItems: 'center',
