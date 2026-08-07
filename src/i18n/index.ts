@@ -193,7 +193,7 @@ export const translations = {
     clearLine: 'Tozalash',
 
     // Debtors
-    debtorsSubtitle: 'Qarzdorlaringizni kuzatib boring',
+    debtorsSubtitle: 'Qarzlarni boshqarish va to\'lovlar tarixi',
     addDebtor: 'Qarzdor qo\'shish',
     editDebtor: 'Qarzdorni tahrirlash',
     debtorName: 'Ism',
@@ -201,6 +201,8 @@ export const translations = {
     amount: 'Miqdor',
     note: 'Izoh',
     noDebtors: 'Qarzdorlar yo\'q',
+    noDebtorsFound: 'Qarzdor topilmadi',
+    clearSearch: 'Qidiruvni tozalash',
     phonePlaceholder: 'Telefon raqam',
     notePlaceholder: 'Izoh...',
     enterName: 'Ism kiriting',
@@ -218,9 +220,12 @@ export const translations = {
     addToDebt: 'Qo\'shish',
     subtractFromDebt: 'Ayirish',
     deleteDebtorConfirm: '{name} ni o\'chirishni tasdiqlaysizmi?',
+    deleteDebtorHistoryWarning: 'Bu amalni bekor qilib bo\'lmaydi — qarzdorning butun tarixi ham butunlay o\'chiriladi.',
     debtorDeleted: 'Qarzdor o\'chirildi',
     added: 'Qo\'shildi',
     subtracted: 'Ayirildi',
+    initialDebtLabel: 'Boshlang\'ich qarz',
+    editDebtorAmountHint: 'Qarz miqdorini o\'zgartirish uchun kartadagi Qo\'shish/Ayirish tugmalaridan foydalaning.',
     confirm: 'Tasdiqlash',
 
     // Statistics
@@ -592,7 +597,7 @@ export const translations = {
     clearLine: 'Очистить',
 
     // Debtors
-    debtorsSubtitle: 'Следите за своими должниками',
+    debtorsSubtitle: 'Управление долгами и история платежей',
     addDebtor: 'Добавить должника',
     editDebtor: 'Редактировать должника',
     debtorName: 'Имя',
@@ -600,6 +605,8 @@ export const translations = {
     amount: 'Сумма',
     note: 'Заметка',
     noDebtors: 'Нет должников',
+    noDebtorsFound: 'Должник не найден',
+    clearSearch: 'Очистить поиск',
     phonePlaceholder: 'Номер телефона',
     notePlaceholder: 'Заметка...',
     enterName: 'Введите имя',
@@ -617,9 +624,12 @@ export const translations = {
     addToDebt: 'Добавить',
     subtractFromDebt: 'Вычесть',
     deleteDebtorConfirm: 'Подтвердите удаление {name}?',
+    deleteDebtorHistoryWarning: 'Это действие нельзя отменить — вся история долга также будет полностью удалена.',
     debtorDeleted: 'Должник удален',
     added: 'Добавлено',
     subtracted: 'Вычтено',
+    initialDebtLabel: 'Начальный долг',
+    editDebtorAmountHint: 'Чтобы изменить сумму долга, используйте кнопки Добавить/Вычесть на карточке должника.',
     confirm: 'Подтвердить',
 
     // Statistics

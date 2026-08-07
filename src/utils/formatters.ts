@@ -47,3 +47,36 @@ export const formatPhone = (text: string): string => {
   if (digits.length > 10) r += ' ' + digits.slice(10, 12)
   return r
 }
+
+// Re-formats an already-stored phone number (raw digits, no leading '+')
+// back into the same "+998 XX XXX XX XX" display shape as formatPhone.
+export const displayPhone = (phone: string): string => {
+  const digits = phone.replace(/\D/g, '')
+  if (digits.length === 0) return phone
+  return formatPhone(digits)
+}
+
+// Short dd.mm.yyyy date formatter — a canonical, timezone-safe counterpart to
+// formatDate() above (which uses dayjs's "DD MMM YYYY" month-name style, a
+// different convention from the numeric dd.mm.yyyy used elsewhere in the
+// app, e.g. debtor cards/history). Mirrors hisvex-web's formatShortDate.
+//
+// Bare date-only strings ("YYYY-MM-DD") have no timezone info, so
+// `new Date()` parses them as UTC midnight — reading that back with local
+// getters shifts the date by a day in negative-UTC-offset timezones. Parse
+// the Y/M/D components directly instead for that case.
+export const formatShortDate = (dateStr?: string): string => {
+  if (!dateStr) return ''
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr)
+  if (dateOnlyMatch && !dateStr.includes('T')) {
+    const [, yyyy, mm, dd] = dateOnlyMatch
+    return `${dd}.${mm}.${yyyy}`
+  }
+  // Full ISO timestamps represent a real moment in time — converting to
+  // local time via the normal Date getters is correct here.
+  const d = new Date(dateStr)
+  const dd = d.getDate().toString().padStart(2, '0')
+  const mm = (d.getMonth() + 1).toString().padStart(2, '0')
+  const yyyy = d.getFullYear()
+  return `${dd}.${mm}.${yyyy}`
+}
