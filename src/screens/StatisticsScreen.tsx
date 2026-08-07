@@ -873,6 +873,54 @@ export function StatisticsScreen() {
             </>
           )}
 
+          {/* Full breakdown — all 8 numbers together in one sequential card,
+              in addition to the KPI row / Section B split above. Reuses the
+              same (now-fixed) overallTotals values, so this is purely an
+              additive presentation, not a second data source. */}
+          {overallTotals && (
+            <>
+              <SectionEyebrow subtitle={t('statsSectionFullBreakdownSubtitle') || 'Barcha ko\'rsatkichlar bitta joyda'}>
+                {t('statsSectionFullBreakdown') || 'To\'liq statistika'}
+              </SectionEyebrow>
+              <div style={{ ...s.chartCard, marginBottom: 16 }}>
+                <div style={s.statsGrid}>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('totalSellablePieces')}</p>
+                    <p style={STAT_VALUE}>{overallTotals.sellableItems}</p>
+                  </div>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('soldPieces') || 'Sotilgan dona'}</p>
+                    <p style={STAT_VALUE}>{overallTotals.soldItems}</p>
+                  </div>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('totalSellValue')}</p>
+                    <p style={STAT_VALUE}>{formatMoney(overallTotals.sellableValue)}</p>
+                  </div>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('soldValue')}</p>
+                    <p style={STAT_VALUE}>{formatMoney(overallTotals.earnedRevenue)}</p>
+                  </div>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('potentialProfit')}</p>
+                    <p style={{ ...STAT_VALUE, color: 'var(--color-primary)' }}>{formatMoney(overallTotals.possibleProfit)}</p>
+                  </div>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('earnedProfit')}</p>
+                    <p style={{ ...STAT_VALUE, color: 'var(--color-primary)' }}>{formatMoney(overallTotals.earnedProfit)}</p>
+                  </div>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('remainingPieces')}</p>
+                    <p style={STAT_VALUE}>{overallTotals.remainingItems}</p>
+                  </div>
+                  <div style={s.statItem}>
+                    <p style={STAT_LABEL}>{t('remainingStockValue')}</p>
+                    <p style={STAT_VALUE}>{formatMoney(overallTotals.stockValue)}</p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Section C — Rankings */}
           <SectionEyebrow>{t('statsSectionRankings') || 'Reyting'}</SectionEyebrow>
 
