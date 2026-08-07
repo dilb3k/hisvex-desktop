@@ -141,6 +141,10 @@ export const translations = {
     preSaveCheck: 'Saqlashdan oldin tekshirish',
     back: 'Orqaga',
     saveError: 'Saqlashda xatolik',
+    lowStockCount: 'Kam qoldiqli',
+    openingQtyHint: "Bu miqdor bugungi boshlang'ich zaxira sifatida qayd etiladi",
+    imageSizeHint: 'JPG yoki PNG, unumli hajm',
+    requiredFieldTitle: 'Majburiy maydon',
 
     // Inventory
     startDay: 'Kunni boshlash',
@@ -536,6 +540,10 @@ export const translations = {
     preSaveCheck: 'Проверка перед сохранением',
     back: 'Назад',
     saveError: 'Ошибка сохранения',
+    lowStockCount: 'Мало на складе',
+    openingQtyHint: 'Это количество будет записано как начальный остаток на сегодня',
+    imageSizeHint: 'JPG или PNG, разумный размер',
+    requiredFieldTitle: 'Обязательное поле',
 
     // Inventory
     startDay: 'Начать день',

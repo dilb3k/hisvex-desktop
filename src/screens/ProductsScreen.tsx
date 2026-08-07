@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useAppStore } from '../store/appStore'
 import { useAuthStore } from '../store/authStore'
 import { productsApi, resolveImageUrl, getDeviceId, clearApiCache } from '../api/client'
-import { Package, Plus, Search, Pencil, Lock, AlertTriangle, Trash2, X } from 'lucide-react'
+import { Package, Plus, Search, Pencil, Lock, AlertTriangle, Trash2, X, Wallet, RefreshCw } from 'lucide-react'
 import { t } from '../i18n'
 import { PageHeader } from '../components/PageHeader'
 import type { Product } from '../types'
@@ -18,13 +18,11 @@ import {
   modalBody,
   modalFooter,
   inputBase,
-  inputError,
   label,
   errorText,
   btnPrimary,
   btnSecondary,
   btnDanger,
-  spinner,
   formatMoney,
   formatInputAmount,
   parseFormattedAmount,
@@ -94,6 +92,73 @@ const btnIcon: React.CSSProperties = {
   transition: 'all 0.15s',
 }
 
+// KPI row — same icon-chip + label + tabular-nums value pattern already
+// established on InventoryScreen.tsx/StatisticsScreen.tsx, so this screen
+// reads as the same app rather than reinventing its own layout.
+const kpiGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 16 }
+const kpiCard: React.CSSProperties = {
+  background: 'var(--color-surface)', borderRadius: 14, padding: 14, border: '1px solid var(--color-border)',
+  display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+}
+const kpiIcon: React.CSSProperties = { width: 38, height: 38, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }
+const kpiLabel: React.CSSProperties = { fontSize: 11.5, color: 'var(--color-text-secondary)', marginBottom: 2 }
+const kpiValue: React.CSSProperties = { fontSize: 16, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -0.3 }
+
+// Error banner — mirrors the Statistics/Inventory/Sales screens' treatment
+// so a genuine fetch failure reads distinctly from "no products yet"
+// instead of both collapsing into the same empty state.
+const errorBannerStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px',
+  borderRadius: 14, background: 'var(--color-danger-soft)', border: '1px solid rgba(239,68,68,0.25)',
+  marginBottom: 16,
+}
+const errorBannerTextStyle: React.CSSProperties = { flex: 1, fontSize: 13.5, fontWeight: 600, color: 'var(--color-danger)', margin: 0 }
+const errorBannerRetryBtnStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9,
+  border: 'none', background: 'var(--color-danger)', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+  flexShrink: 0,
+}
+
+// Loading skeleton block — content-shaped placeholder (KPI row + card list)
+// using the globally-defined `pulse` keyframe, replacing the old bare spinner.
+const skeletonBlockBase: React.CSSProperties = { borderRadius: 14, background: 'var(--color-surface)', border: '1px solid var(--color-border)', animation: 'pulse 1.4s ease-in-out infinite' }
+function skeletonBlock(h: number, delay = 0): React.CSSProperties {
+  return { ...skeletonBlockBase, height: h, animationDelay: `${delay}s` }
+}
+
+function ProductsSkeleton() {
+  return (
+    <div>
+      <div style={kpiGrid}>
+        {[0, 1, 2].map((i) => <div key={i} style={skeletonBlock(60, i * 0.05)} />)}
+      </div>
+      {[0, 1, 2, 3].map((i) => <div key={i} style={{ ...skeletonBlock(140, 0.2 + i * 0.05), marginBottom: 8 }} />)}
+    </div>
+  )
+}
+
+function ErrorBanner({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div style={errorBannerStyle} role="alert">
+      <AlertTriangle size={20} color="var(--color-danger)" style={{ flexShrink: 0 }} />
+      <p style={errorBannerTextStyle}>{t('statsErrorTitle') || "Ma'lumotlarni yuklab bo'lmadi"}</p>
+      <button style={errorBannerRetryBtnStyle} onClick={onRetry}>
+        <RefreshCw size={13} />
+        {t('retryLabel') || 'Qayta urinish'}
+      </button>
+    </div>
+  )
+}
+
+// Small required-field marker — visible before a user hits validation errors.
+// Only genuinely-required fields (name, buyPrice, sellPrice per
+// validateProductInput) get this; quantity is optional (defaults to 0).
+function RequiredMark() {
+  return <span style={{ color: 'var(--color-danger)', marginLeft: 3, fontWeight: 700 }} title={t('requiredFieldTitle')}>*</span>
+}
+
+const hintText: React.CSSProperties = { fontSize: 11.5, color: 'var(--color-text-tertiary)', margin: '5px 0 0', lineHeight: 1.4 }
+
 export function ProductsScreen() {
   const { products, loadProducts } = useAppStore()
   const showToast = useAppStore((s) => s.showToast)
@@ -101,6 +166,7 @@ export function ProductsScreen() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(false)
   const isLoading = loading || storeLoading
 
   const [showModal, setShowModal] = useState(false)
@@ -137,16 +203,41 @@ export function ProductsScreen() {
 
   const [showPinVerify, setShowPinVerify] = useState(false)
   const [pinInput, setPinInput] = useState('')
+  // Which action the PIN modal should run on confirm — Save already required
+  // this gate; Delete is routed through the same check now (item 11).
+  const [pinAction, setPinAction] = useState<'save' | 'delete' | null>(null)
 
   const [showBarcodeInput, setShowBarcodeInput] = useState(false)
   const [barcodeInput, setBarcodeInput] = useState('')
 
+  // Field-level error for a duplicate-barcode conflict — either caught
+  // client-side (against already-loaded products) before the request is
+  // even sent, or surfaced from the backend's 409 response (both message
+  // shapes always mention "barcode", see comp-bar-server's product.service.ts).
+  // Shown next to the barcode input instead of only a generic toast.
+  const [barcodeError, setBarcodeError] = useState('')
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
+  // loadProducts() (appStore) swallows its own fetch errors into the shared
+  // `error` field rather than throwing, so a genuine fetch failure and "no
+  // products yet" would otherwise render identically. After the awaited
+  // call, treat it as a fetch error only when the list actually came back
+  // empty AND the store recorded an error — this avoids false positives
+  // from a stale unrelated `error` value when products were already cached
+  // from an earlier visit (in which case loadProducts() short-circuits
+  // without touching `error` at all).
+  const doLoadProducts = useCallback(async (force?: boolean) => {
     setLoading(true)
-    loadProducts().finally(() => setLoading(false))
+    await loadProducts(force)
+    const { products: loaded, error } = useAppStore.getState()
+    setFetchError(loaded.length === 0 && !!error)
+    setLoading(false)
   }, [loadProducts])
+
+  useEffect(() => {
+    doLoadProducts()
+  }, [doLoadProducts])
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300)
@@ -162,6 +253,19 @@ export function ProductsScreen() {
         return ia !== ib ? ia - ib : a.name.localeCompare(b.name)
       })
   }, [products, debouncedSearch])
+
+  // KPI totals — computed over the full catalog (not the search-filtered
+  // list), matching "Kam" threshold used by getStockStatus below (qty <= 5).
+  const kpiTotals = useMemo(() => {
+    let lowStock = 0
+    let value = 0
+    for (const p of products) {
+      const qty = p.quantity ?? 0
+      if (qty <= 5) lowStock++
+      value += qty * resolveSellPrice(p, p)
+    }
+    return { totalSkus: products.length, lowStock, value }
+  }, [products])
 
   const previewQty = Number(form.quantity || 0)
   const previewBuy = parseFormattedAmount(form.buyPrice)
@@ -179,6 +283,7 @@ export function ProductsScreen() {
   const resetForm = () => {
     setForm(EMPTY_FORM)
     setFormErrors(EMPTY_ERRORS)
+    setBarcodeError('')
     setEditingProduct(null)
   }
 
@@ -190,6 +295,7 @@ export function ProductsScreen() {
   const openEdit = (item: Product) => {
     setEditingProduct(item)
     setFormErrors(EMPTY_ERRORS)
+    setBarcodeError('')
     setForm({
       name: item.name,
       quantity: String(item.quantity ?? ''),
@@ -237,11 +343,13 @@ export function ProductsScreen() {
       ...prev,
       barcodes: prev.barcodes.includes(code) ? prev.barcodes : [...prev.barcodes, code],
     }))
+    setBarcodeError('')
     setShowBarcodeInput(false)
     setBarcodeInput('')
   }
   const handleRemoveBarcode = (index: number) => {
     setForm((prev) => ({ ...prev, barcodes: prev.barcodes.filter((_, i) => i !== index) }))
+    setBarcodeError('')
   }
 
   const validate = () => {
@@ -311,12 +419,16 @@ export function ProductsScreen() {
   }, [form, editingProduct, showToast])
 
   const execSave = useCallback(async () => {
+    setBarcodeError('')
     const barcodes = form.barcodes.filter(Boolean)
     if (barcodes.length) {
       for (const code of barcodes) {
         const dup = products.find((p) => p.barcodes?.includes(code) && p._id !== editingProduct?._id)
         if (dup) {
-          showToast(`"${dup.name}" allaqachon bu (${code}) barcode dan foydalanmoqda`, 'error')
+          // Field-level error next to the barcode input (item 8) — caught
+          // client-side against the already-loaded catalog, so the
+          // conflicting product's name is always available here.
+          setBarcodeError(`"${dup.name}" allaqachon bu (${code}) barcode dan foydalanmoqda`)
           return false
         }
       }
@@ -354,7 +466,17 @@ export function ProductsScreen() {
         saveProductOffline(barcodes)
         return true
       }
-      showToast(err instanceof Error ? err.message : t('error'), 'error')
+      const message = err instanceof Error ? err.message : t('error')
+      // The backend's 409 duplicate-barcode responses (both the pre-check
+      // and the race-condition/unique-index fallback — see
+      // comp-bar-server's product.service.ts) always mention "barcode" in
+      // their message; route those to the field-level error next to the
+      // barcode input instead of a generic toast (item 8).
+      if (/barcode/i.test(message)) {
+        setBarcodeError(message)
+      } else {
+        showToast(message, 'error')
+      }
       return false
     } finally {
       setIsSubmitting(false)
@@ -363,13 +485,22 @@ export function ProductsScreen() {
 
   const handleSave = async () => {
     if (!validate()) return
-    if (blockCode && !blockDisabled) { setShowPinVerify(true); setPinInput(''); return }
+    if (blockCode && !blockDisabled) { setPinAction('save'); setShowPinVerify(true); setPinInput(''); return }
     await execSave()
   }
 
   const handleConfirmPin = () => {
-    if (pinInput === blockCode) { setShowPinVerify(false); setPinInput(''); execSave() }
-    else { showToast("Blok kod noto'g'ri", 'error'); setPinInput('') }
+    if (pinInput === blockCode) {
+      setShowPinVerify(false)
+      setPinInput('')
+      const action = pinAction
+      setPinAction(null)
+      if (action === 'delete') execDelete()
+      else execSave()
+    } else {
+      showToast("Blok kod noto'g'ri", 'error')
+      setPinInput('')
+    }
   }
 
   // The restock endpoint is atomic server-side (an increment, not a
@@ -444,7 +575,7 @@ export function ProductsScreen() {
   // server, which is worse than failing loudly. So deletion stays
   // online-only: offline or on a network failure, we surface a clear error
   // instead of enqueuing anything.
-  const handleDelete = async () => {
+  const execDelete = async () => {
     if (!deleteTarget) return
 
     if (!isOnline()) {
@@ -468,6 +599,13 @@ export function ProductsScreen() {
     } finally {
       setIsDeleting(false)
     }
+  }
+
+  // Delete is at least as destructive as Save, so route it through the same
+  // PIN check when blockCode protection is enabled (item 11).
+  const handleDeleteClick = () => {
+    if (blockCode && !blockDisabled) { setPinAction('delete'); setShowPinVerify(true); setPinInput(''); return }
+    execDelete()
   }
 
   const inputErrorStyle: React.CSSProperties = {
@@ -511,37 +649,69 @@ export function ProductsScreen() {
       />
 
       {isLoading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
-          <div style={spinner(36)} />
-        </div>
-      ) : sortedProducts.length === 0 ? (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 80,
-          color: 'var(--color-text-secondary)',
-        }}>
-          <Package size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
-          <p style={{ fontSize: 15, fontWeight: 500 }}>{t('noProducts')}</p>
-          {!debouncedSearch && (
-            <button
-              onClick={openCreate}
-              style={{
-                ...btnPrimary,
-                marginTop: 16,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
-              <Plus size={16} />
-              {t('addProduct')}
-            </button>
-          )}
-        </div>
+        <ProductsSkeleton />
+      ) : fetchError ? (
+        <ErrorBanner onRetry={() => doLoadProducts(true)} />
       ) : (
+        <>
+          {/* KPI row — total SKUs, low-stock count, total current inventory
+              value. Qty-count metric uses --color-metric-qty; stock value
+              uses --color-metric-revenue (closest in spirit to "revenue" of
+              the three identity colors, since it's a money figure); low
+              stock is a status signal (existing warning color), not one of
+              the three tracked metrics. */}
+          <div style={kpiGrid}>
+            <div style={kpiCard}>
+              <div style={{ ...kpiIcon, background: 'var(--color-metric-qty-soft)', color: 'var(--color-metric-qty)' }}><Package size={17} /></div>
+              <div>
+                <div style={kpiLabel}>{t('totalProducts')}</div>
+                <div style={{ ...kpiValue, color: 'var(--color-metric-qty)' }}>{kpiTotals.totalSkus}</div>
+              </div>
+            </div>
+            <div style={kpiCard}>
+              <div style={{ ...kpiIcon, background: 'var(--color-warning-soft)', color: 'var(--color-warning)' }}><AlertTriangle size={17} /></div>
+              <div>
+                <div style={kpiLabel}>{t('lowStockCount')}</div>
+                <div style={{ ...kpiValue, color: 'var(--color-warning)' }}>{kpiTotals.lowStock}</div>
+              </div>
+            </div>
+            <div style={kpiCard}>
+              <div style={{ ...kpiIcon, background: 'var(--color-metric-revenue-soft)', color: 'var(--color-metric-revenue)' }}><Wallet size={17} /></div>
+              <div>
+                <div style={kpiLabel}>{t('stockValue')}</div>
+                <div style={{ ...kpiValue, color: 'var(--color-metric-revenue)' }}>{formatMoney(kpiTotals.value)}</div>
+              </div>
+            </div>
+          </div>
+
+          {sortedProducts.length === 0 ? (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 80,
+              color: 'var(--color-text-secondary)',
+            }}>
+              <Package size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
+              <p style={{ fontSize: 15, fontWeight: 500 }}>{t('noProducts')}</p>
+              {!debouncedSearch && (
+                <button
+                  onClick={openCreate}
+                  style={{
+                    ...btnPrimary,
+                    marginTop: 16,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <Plus size={16} />
+                  {t('addProduct')}
+                </button>
+              )}
+            </div>
+          ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {sortedProducts.map((item) => {
             const status = getStockStatus(item.quantity ?? 0)
@@ -652,6 +822,8 @@ export function ProductsScreen() {
             )
           })}
         </div>
+          )}
+        </>
       )}
 
       {/* Product Form Modal */}
@@ -705,7 +877,7 @@ export function ProductsScreen() {
 
             <div style={modalBody}>
               <div style={{ marginBottom: 14 }}>
-                <label style={label}>{t('productName')}</label>
+                <label style={label}>{t('productName')}<RequiredMark /></label>
                 <input
                   type="text"
                   placeholder={t('productNamePlaceholder')}
@@ -717,7 +889,7 @@ export function ProductsScreen() {
               </div>
 
               <div style={{ marginBottom: 14 }}>
-                <label style={label}>{t('buyPrice')}</label>
+                <label style={label}>{t('buyPrice')}<RequiredMark /></label>
                 <input
                   type="text"
                   placeholder="0"
@@ -729,7 +901,7 @@ export function ProductsScreen() {
               </div>
 
               <div style={{ marginBottom: 14 }}>
-                <label style={label}>{t('sellPrice')}</label>
+                <label style={label}>{t('sellPrice')}<RequiredMark /></label>
                 <input
                   type="text"
                   placeholder="0"
@@ -750,9 +922,14 @@ export function ProductsScreen() {
                   style={formErrors.quantity ? inputErrorStyle : inputBase}
                 />
                 {formErrors.quantity && <div style={errorText}>{formErrors.quantity}</div>}
+                {/* Create-only hint (item 4) — on edit this field adjusts
+                    today's existing stock rather than seeding a fresh
+                    opening quantity, so the "today's opening stock" framing
+                    would be misleading there. */}
+                {!editingProduct && <div style={hintText}>{t('openingQtyHint')}</div>}
               </div>
 
-              {!editingProduct && (previewQty > 0 || previewBuy > 0 || previewSell > 0) && (
+              {(previewQty > 0 || previewBuy > 0 || previewSell > 0) && (
                 <div style={{
                   background: 'var(--color-surface)',
                   borderRadius: 10,
@@ -833,11 +1010,12 @@ export function ProductsScreen() {
                 )}
               </div>
               <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} style={{ display: 'none' }} />
+              <div style={{ ...hintText, textAlign: 'center', marginTop: -8, marginBottom: 14 }}>{t('imageSizeHint')}</div>
 
               <div style={{
                 padding: 14,
                 borderRadius: 10,
-                border: '1px solid var(--color-border)',
+                border: barcodeError ? '1px solid var(--color-danger)' : '1px solid var(--color-border)',
                 background: 'var(--color-surface)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: form.barcodes.length > 0 ? 10 : 0 }}>
@@ -887,6 +1065,7 @@ export function ProductsScreen() {
                 {form.barcodes.length === 0 && (
                   <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4 }}>Shtrixkod yo'q</div>
                 )}
+                {barcodeError && <div style={{ ...errorText, marginTop: 8 }}>{barcodeError}</div>}
               </div>
             </div>
 
@@ -1061,10 +1240,11 @@ export function ProductsScreen() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button onClick={() => { setShowDeleteModal(false); setDeleteTarget(null) }} style={btnSecondary}>{t('cancel')}</button>
               <button
-                onClick={handleDelete}
+                onClick={handleDeleteClick}
                 disabled={isDeleting}
-                style={{ ...btnDanger, opacity: isDeleting ? 0.6 : 1, cursor: isDeleting ? 'not-allowed' : 'pointer' }}
+                style={{ ...btnDanger, opacity: isDeleting ? 0.6 : 1, cursor: isDeleting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, lineHeight: 1 }}
               >
+                {blockCode && !blockDisabled ? <Lock size={14} color="#fff" style={{ display: 'block' }} /> : null}
                 {isDeleting ? t('loading') : t('delete')}
               </button>
             </div>
@@ -1087,7 +1267,7 @@ export function ProductsScreen() {
             <Lock size={32} color="var(--color-warning)" style={{ marginBottom: 12 }} />
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)', marginBottom: 6 }}>Blok kodni kiriting</div>
             <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
-              Mahsulotni saqlash uchun himoya kodini kiriting
+              {pinAction === 'delete' ? "Mahsulotni o'chirish uchun himoya kodini kiriting" : 'Mahsulotni saqlash uchun himoya kodini kiriting'}
             </div>
             <input
               type="password" inputMode="numeric" placeholder="0000" maxLength={4}
@@ -1099,7 +1279,7 @@ export function ProductsScreen() {
               style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, marginBottom: 16, color: 'var(--color-text)' }}
             />
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setShowPinVerify(false)} style={{ ...btnSecondary, flex: 1 }}>Bekor qilish</button>
+              <button onClick={() => { setShowPinVerify(false); setPinAction(null) }} style={{ ...btnSecondary, flex: 1 }}>Bekor qilish</button>
               <button onClick={handleConfirmPin} style={{ ...btnPrimary, flex: 1 }}>Tasdiqlash</button>
             </div>
           </div>
