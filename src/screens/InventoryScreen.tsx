@@ -143,6 +143,10 @@ function InventorySkeleton() {
 
 export function InventoryScreen() {
   const showToast = useAppStore((s) => s.showToast)
+  // Distinguishes "genuinely no products in the catalog yet" from "just no
+  // inventory entries today" — mirrors mobile's already-correct Inventory
+  // empty-state pattern (item 5 of the products redesign pass).
+  const catalogIsEmpty = useAppStore((s) => s.products.length === 0)
   const [selectedDate, setSelectedDate] = useState(getBusinessDate)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
@@ -563,7 +567,7 @@ export function InventoryScreen() {
           {filteredItems.length === 0 && (
             <div style={s.emptyWrap}>
               <Package size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
-              <p style={{ fontSize: 15, fontWeight: 500 }}>{t('noInventory')}</p>
+              <p style={{ fontSize: 15, fontWeight: 500 }}>{catalogIsEmpty ? t('addProductsFirst') : t('noInventory')}</p>
             </div>
           )}
           {filteredItems.map(entry => renderCard(entry))}
