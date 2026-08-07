@@ -402,7 +402,9 @@ function buildTotals(summary: InventorySummary | null, items: any[]): Totals {
       stockValue: summary.totalStockSellValue,
     }
   }
-  let sold = 0, revenue = 0, profit = 0, remaining = 0
+  // Flow metrics (sold/revenue/profit) are correctly summed across every
+  // day-entry in the range.
+  let sold = 0, revenue = 0, profit = 0
   for (const item of items) {
     const qty = item.currentQuantity ?? 0
     const p = item.product
@@ -412,21 +414,36 @@ function buildTotals(summary: InventorySummary | null, items: any[]): Totals {
     sold += soldQty
     revenue += soldQty * sellPrice
     profit += item.realizedProfit ?? (soldQty * (sellPrice - buyPrice))
-    remaining += Math.max(qty, 0)
   }
-  const stockSellValue = items.reduce((s, item) => {
-    const qty = item.currentQuantity ?? 0
-    const p = item.product
-    const sellPrice = resolveSellPrice(item, p)
-    return s + Math.max(qty, 0) * sellPrice
-  }, 0)
-  const stockProfit = items.reduce((s, item) => {
-    const qty = item.currentQuantity ?? 0
+
+  // Stock metrics (remaining pieces/value) are a POINT-IN-TIME snapshot, not
+  // a flow — a product's physical stock exists once, not once per day it
+  // shows up in a wide date-range query. Summing `currentQuantity` across
+  // every per-product-per-day row (the previous bug here, only reachable
+  // when `summary` is unavailable) inflated these totals by roughly "days
+  // in range" for any multi-day query. Take only each product's
+  // most-recent entry in the range instead, mirroring the backend's
+  // aggregateInventoryForRange (inventory.logic.ts).
+  const latestByProduct = new Map<string, any>()
+  for (const item of items) {
+    const id = item.product?._id || item.product?.id || item.productId
+    if (!id) continue
+    const existing = latestByProduct.get(id)
+    if (!existing || (item.date ?? '') >= (existing.date ?? '')) {
+      latestByProduct.set(id, item)
+    }
+  }
+  let remaining = 0, stockSellValue = 0, stockProfit = 0
+  for (const item of latestByProduct.values()) {
+    const qty = Math.max(item.currentQuantity ?? 0, 0)
     const p = item.product
     const sellPrice = resolveSellPrice(item, p)
     const buyPrice = resolveBuyPrice(item, p)
-    return s + Math.max(qty, 0) * (sellPrice - buyPrice)
-  }, 0)
+    remaining += qty
+    stockSellValue += qty * sellPrice
+    stockProfit += qty * (sellPrice - buyPrice)
+  }
+
   return {
     sellableItems: sold + remaining,
     soldItems: sold,
