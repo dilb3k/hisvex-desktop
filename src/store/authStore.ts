@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { setApiToken, setRefreshToken, clearApiCache, authApi } from '../api/client'
-import { setBusinessDayStartHour } from '../utils/businessDay'
+import { syncBusinessDayFromServer } from '../utils/businessDay'
 import {
   readStoredAuth,
   setStoredToken,
@@ -18,9 +18,15 @@ function withoutBlockCode(user: User): User {
 }
 
 function applyBusinessDayHour(user: User | null | undefined) {
-  if (user?.businessDayStartHour != null) {
-    setBusinessDayStartHour(user.businessDayStartHour)
-  }
+  if (!user) return
+  // Mirror the server's whole business-day state, not just the active hour —
+  // see syncBusinessDayFromServer for why taking only businessDayStartHour
+  // silently reverted a scheduled change the client had already applied.
+  syncBusinessDayFromServer({
+    businessDayStartHour: user.businessDayStartHour,
+    pendingBusinessDayStartHour: user.pendingBusinessDayStartHour,
+    businessDayEffectiveFrom: user.businessDayEffectiveFrom,
+  })
 }
 
 function persistToken(token: string) {

@@ -7,9 +7,10 @@
 
 import { isOnline, subscribeOnline } from '../utils/network'
 import { getQueueSnapshot, getPendingCount, removeSynced } from './offlineQueue'
+import type { QueueKind } from './offlineQueue'
 import { syncApi } from '../api/client'
 import { useAppStore } from './appStore'
-import type { DailySnapshot, InventoryItem, Product, SyncPayload, SyncResponse } from '../types'
+import type { DailySnapshot, InventoryItem, Product, SyncPayload, SyncRejectedItem, SyncResponse } from '../types'
 
 const LAST_SYNC_KEY = 'hisvex_last_sync_at'
 const BACKGROUND_SYNC_INTERVAL_MS = 60000
@@ -79,6 +80,59 @@ function applyPulledUpdates(response: SyncResponse): void {
   }))
 }
 
+// Rejection reasons the server will never change its mind about, because they
+// are deterministic properties of the item itself rather than transient state:
+// a business day that has closed stays closed, and an entry with no date can
+// never gain one. Items rejected for these must be dropped from the queue —
+// keeping them (the previous behaviour) left them pending forever, which meant
+// the sync-status indicator never returned to "synced" and the 60s background
+// timer re-uploaded the same doomed payload for the lifetime of the install.
+//
+// FUTURE_DAY_NOT_ALLOWED is deliberately NOT terminal: it usually means clock
+// skew, and the item becomes valid on its own once that business day arrives.
+const TERMINAL_REJECT_REASONS = new Set(['PAST_DAY_LOCKED', 'MISSING_DATE'])
+
+// Backend entity names (sync.service.ts) -> local queue kinds.
+const ENTITY_TO_KIND: Record<string, QueueKind> = {
+  product: 'product',
+  inventory: 'inventory',
+  snapshot: 'daily',
+}
+
+/**
+ * Splits one kind's sent localIds into those to remove from the queue
+ * (accepted, plus rejected-for-good) and those to keep for a later retry.
+ *
+ * Rejections are matched per entity kind rather than through one flat set of
+ * localIds: an inventory entry's localId is `${date}-${productLocalId}`, so a
+ * flat set could let a product rejection suppress removal of an unrelated
+ * inventory item that happened to share the string.
+ */
+function partitionQueueIds(
+  kind: QueueKind,
+  sentLocalIds: string[],
+  rejected: SyncRejectedItem[],
+): { remove: string[]; retryCount: number } {
+  const rejectedForKind = new Map<string, string>()
+  for (const item of rejected) {
+    if (ENTITY_TO_KIND[item.entity] === kind) {
+      rejectedForKind.set(item.localId, item.reason)
+    }
+  }
+
+  const remove: string[] = []
+  let retryCount = 0
+  for (const id of sentLocalIds) {
+    const reason = rejectedForKind.get(id)
+    if (reason === undefined || TERMINAL_REJECT_REASONS.has(reason)) {
+      remove.push(id)
+    } else {
+      retryCount += 1
+    }
+  }
+  return { remove, retryCount }
+}
+
 let syncInFlight: Promise<SyncResult> | null = null
 
 /**
@@ -120,29 +174,48 @@ async function performSync(): Promise<SyncResult> {
     // The server validates each queued item independently (e.g. an inventory
     // edit queued yesterday but only synced after the business day rolled
     // over comes back PAST_DAY_LOCKED) and reports failures in `rejected`
-    // without failing the whole call. Only drop items the server actually
-    // accepted — removing a rejected item here would silently discard real
-    // unsynced data with no way to recover it.
-    const rejectedLocalIds = new Set(data.rejected.map((item) => item.localId))
-    if (queue.product.length > 0) {
-      removeSynced('product', queue.product.map((item) => item.localId).filter((id) => !rejectedLocalIds.has(id)))
+    // without failing the whole call. Accepted items are dropped; rejected
+    // ones are dropped only when the reason is terminal (see
+    // TERMINAL_REJECT_REASONS) and otherwise kept for the next attempt.
+    let retryTotal = 0
+    for (const [kind, items] of [
+      ['product', queue.product],
+      ['inventory', queue.inventory],
+      ['daily', queue.daily],
+    ] as const) {
+      if (items.length === 0) continue
+      const { remove, retryCount } = partitionQueueIds(
+        kind,
+        items.map((item) => item.localId),
+        data.rejected,
+      )
+      removeSynced(kind, remove)
+      retryTotal += retryCount
     }
-    if (queue.inventory.length > 0) {
-      removeSynced('inventory', queue.inventory.map((item) => item.localId).filter((id) => !rejectedLocalIds.has(id)))
-    }
-    if (queue.daily.length > 0) {
-      removeSynced('daily', queue.daily.map((item) => item.localId).filter((id) => !rejectedLocalIds.has(id)))
-    }
+
+    // Terminal rejections are discarded rather than retried, so they need their
+    // own message — "qayta urinib ko'riladi" would be a lie for these.
+    const droppedTotal = data.rejected.filter(
+      (item) => ENTITY_TO_KIND[item.entity] && TERMINAL_REJECT_REASONS.has(item.reason),
+    ).length
 
     applyPulledUpdates(data)
     setLastSyncAt(data.serverTime)
 
     if (data.rejected.length > 0) {
       // eslint-disable-next-line no-console
-      console.warn('Sync: some queued items were rejected by the server and remain queued', data.rejected)
-      return {
-        ok: true,
-        error: `${data.rejected.length} ta yozuv sinxronlanmadi (masalan kun yopilgani uchun) — qayta urinib ko'riladi`,
+      console.warn('Sync: server rejected some queued items', data.rejected)
+      if (droppedTotal > 0) {
+        return {
+          ok: true,
+          error: `${droppedTotal} ta yozuv sinxronlanmadi (kun yopilgan) va o'chirildi`,
+        }
+      }
+      if (retryTotal > 0) {
+        return {
+          ok: true,
+          error: `${retryTotal} ta yozuv sinxronlanmadi — qayta urinib ko'riladi`,
+        }
       }
     }
 

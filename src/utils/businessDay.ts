@@ -53,6 +53,41 @@ export const scheduleBusinessDayStartHour = (hour: number) => {
 export const setPendingBusinessDayHour = (hour: number, from: string) => {
   pendingHour = hour
   effectiveFrom = from
+  // Persist like scheduleBusinessDayStartHour does — without this a
+  // server-provided pending change was forgotten on the next app start.
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(LS_PENDING_HOUR, String(hour))
+      localStorage.setItem(LS_PENDING_FROM, from)
+    } catch {}
+  }
+}
+
+/**
+ * Applies the server's authoritative business-day state — active hour plus any
+ * scheduled change — in one step.
+ *
+ * The client used to schedule its own pending change from `dayjs().add(1,'day')`
+ * (the machine's local timezone) while the backend scheduled its own from
+ * TIMEZONE_OFFSET, so the two flipped at different instants and briefly
+ * disagreed about which business day a sale belonged to. On top of that, every
+ * /auth/me response called setBusinessDayStartHour(user.businessDayStartHour),
+ * which overwrote a pending change the client had already correctly promoted
+ * locally. The backend owns all three values; this mirrors them verbatim.
+ */
+export const syncBusinessDayFromServer = (input: {
+  businessDayStartHour?: number | null
+  pendingBusinessDayStartHour?: number | null
+  businessDayEffectiveFrom?: string | null
+}) => {
+  if (typeof input.businessDayStartHour === 'number') {
+    setBusinessDayStartHour(input.businessDayStartHour)
+  }
+  if (typeof input.pendingBusinessDayStartHour === 'number' && input.businessDayEffectiveFrom) {
+    setPendingBusinessDayHour(input.pendingBusinessDayStartHour, input.businessDayEffectiveFrom)
+  } else {
+    clearPending()
+  }
 }
 
 export const getPendingBusinessDayStartHour = () => pendingHour

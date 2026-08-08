@@ -9,6 +9,13 @@ export interface User {
   isPayed?: boolean
   isActive?: boolean
   businessDayStartHour?: number
+  // A business-day hour change takes effect at the start of the next business
+  // day rather than immediately, so the backend keeps the scheduled value
+  // separately until then. Clients must mirror both (see
+  // businessDay.ts's syncBusinessDayFromServer) or they compute a different
+  // "today" than the server does.
+  pendingBusinessDayStartHour?: number | null
+  businessDayEffectiveFrom?: string | null
   blockCode?: string | null
   subscriptionEndDate?: string | null
   createdAt?: string
