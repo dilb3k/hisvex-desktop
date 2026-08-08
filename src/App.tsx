@@ -13,6 +13,7 @@ import { SettingsScreen } from './screens/SettingsScreen'
 import { UsersScreen } from './screens/UsersScreen'
 import { AppLayout } from './components/AppLayout'
 import { SplashScreen } from './components/SplashScreen'
+import { UpdateAvailableModal } from './components/UpdateAvailableModal'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore()
@@ -49,6 +50,7 @@ export function App() {
 
   return (
     <HashRouter>
+      <UpdateAvailableModal />
       <Routes>
         <Route path="/login" element={<PublicRoute><LoginScreen /></PublicRoute>} />
         <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>

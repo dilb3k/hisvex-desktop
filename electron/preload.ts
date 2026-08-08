@@ -44,6 +44,7 @@ const electronAPI = {
     ipcRenderer.invoke('file:saveCsv', defaultName, content) as Promise<
       { saved: true; filePath: string } | { saved: false }
     >,
+  openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url) as Promise<boolean>,
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

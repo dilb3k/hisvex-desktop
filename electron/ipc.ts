@@ -1,4 +1,4 @@
-import { app, IpcMain, BrowserWindow, dialog, nativeTheme, safeStorage } from 'electron'
+import { app, IpcMain, BrowserWindow, dialog, nativeTheme, safeStorage, shell } from 'electron'
 import Store from 'electron-store'
 import fs from 'node:fs'
 
@@ -108,6 +108,21 @@ export function initIpcHandlers(ipcMain: IpcMain, store: Store): void {
   // "Save As" in any desktop app. Content is written as-is (renderer already
   // includes the UTF-8 BOM + sep=, hint needed for it to open cleanly in
   // Excel), so this handler only owns the dialog + disk write.
+  // Opens a URL in the OS default browser (e.g. the update-available modal's
+  // "Download" button). Restricted to http(s) — the renderer is sandboxed
+  // but still not trusted to hand the main process an arbitrary
+  // file://, javascript:, or custom-protocol string to shell.openExternal.
+  ipcMain.handle('shell:openExternal', (_event, url: string) => {
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+    } catch {
+      return false
+    }
+    shell.openExternal(url)
+    return true
+  })
+
   ipcMain.handle('file:saveCsv', async (event, defaultName: string, content: string) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const dialogOpts = { defaultPath: defaultName, filters: [{ name: 'CSV', extensions: ['csv'] }] }

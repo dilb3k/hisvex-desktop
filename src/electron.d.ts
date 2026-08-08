@@ -25,6 +25,7 @@ interface ElectronAPI {
   isMaximized: () => Promise<boolean>
   isWindows: () => boolean
   saveCsv: (defaultName: string, content: string) => Promise<{ saved: true; filePath: string } | { saved: false }>
+  openExternal: (url: string) => Promise<boolean>
 }
 
 interface Window {

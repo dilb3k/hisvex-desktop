@@ -405,6 +405,13 @@ export const translations = {
     syncSuccessToast: 'Sinxronlash muvaffaqiyatli yakunlandi',
     syncFailedToast: 'Sinxronlash muvaffaqiyatsiz tugadi',
     syncOfflineTooltip: "Internet aloqasi yo'q, sinxronlash mumkin emas",
+
+    // Update-available modal
+    updateAvailableTitle: 'Yangi versiya chiqdi',
+    updateAvailableBody: 'Hisvex {latest} versiyasi mavjud. Siz hozir {current} versiyasini ishlatyapsiz.',
+    updateDownloadBtn: 'Yuklab olish',
+    updateLaterBtn: 'Keyinroq eslatish',
+    updateSkipBtn: "Bu versiyani o'tkazib yuborish",
   },
 
   ru: {
@@ -810,6 +817,13 @@ export const translations = {
     syncSuccessToast: 'Синхронизация успешно завершена',
     syncFailedToast: 'Не удалось синхронизировать',
     syncOfflineTooltip: 'Нет подключения к интернету, синхронизация недоступна',
+
+    // Update-available modal
+    updateAvailableTitle: 'Доступна новая версия',
+    updateAvailableBody: 'Доступна версия Hisvex {latest}. Сейчас вы используете версию {current}.',
+    updateDownloadBtn: 'Скачать',
+    updateLaterBtn: 'Напомнить позже',
+    updateSkipBtn: 'Пропустить эту версию',
   },
 }
 
