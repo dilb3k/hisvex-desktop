@@ -43,6 +43,7 @@ const s: Record<string, React.CSSProperties> = {
 export function Titlebar() {
   const [maximized, setMaximized] = useState(false)
   const barRef = useRef<HTMLDivElement>(null)
+  const controlsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!isWin) return
@@ -62,6 +63,20 @@ export function Titlebar() {
     return () => { el.style.removeProperty('-webkit-app-region') }
   }, [])
 
+  // `-webkit-app-region: drag` on the bar makes the whole strip a window
+  // drag handle — Chromium then treats every mousedown inside it, including
+  // on these buttons, as the start of a window drag rather than a click, so
+  // minimize/maximize/close silently did nothing. The fix is to carve the
+  // button cluster back out as a `no-drag` region (React's CSSProperties
+  // typing doesn't know this non-standard property, same as the drag rule
+  // above, so it's set imperatively rather than via the `style` prop).
+  useEffect(() => {
+    const el = controlsRef.current
+    if (!el) return
+    el.style.setProperty('-webkit-app-region', 'no-drag')
+    return () => { el.style.removeProperty('-webkit-app-region') }
+  }, [])
+
   const handleMinimize = () => window.electronAPI?.minimizeWindow()
   const handleMaximize = () => window.electronAPI?.maximizeWindow()
   const handleClose = () => window.electronAPI?.closeWindow()
@@ -72,36 +87,41 @@ export function Titlebar() {
         <img src="./Hisvex.png" alt="Hisvex" style={{ width: 18, height: 18, objectFit: 'cover', borderRadius: 5 }} />
         <span>Hisvex</span>
       </div>
-      <button
-        style={s.btn}
-        onClick={handleMinimize}
-        onMouseEnter={(e) => { e.currentTarget.style.setProperty('background', 'var(--color-border)') }}
-        onMouseLeave={(e) => { e.currentTarget.style.setProperty('background', 'transparent') }}
-      >
-        <Minus size={14} />
-      </button>
-      <button
-        style={s.btn}
-        onClick={handleMaximize}
-        onMouseEnter={(e) => { e.currentTarget.style.setProperty('background', 'var(--color-border)') }}
-        onMouseLeave={(e) => { e.currentTarget.style.setProperty('background', 'transparent') }}
-      >
-        <Square size={11} />
-      </button>
-      <button
-        style={s.btn}
-        onClick={handleClose}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.setProperty('background', '#e81123')
-          e.currentTarget.style.setProperty('color', '#fff')
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.setProperty('background', 'transparent')
-          e.currentTarget.style.setProperty('color', 'var(--color-text)')
-        }}
-      >
-        <X size={14} />
-      </button>
+      <div ref={controlsRef} style={{ display: 'flex', alignItems: 'center' }}>
+        <button
+          style={s.btn}
+          onClick={handleMinimize}
+          aria-label="Kichraytirish"
+          onMouseEnter={(e) => { e.currentTarget.style.setProperty('background', 'var(--color-border)') }}
+          onMouseLeave={(e) => { e.currentTarget.style.setProperty('background', 'transparent') }}
+        >
+          <Minus size={14} />
+        </button>
+        <button
+          style={s.btn}
+          onClick={handleMaximize}
+          aria-label={maximized ? 'Kichik oyna' : 'Katta oyna'}
+          onMouseEnter={(e) => { e.currentTarget.style.setProperty('background', 'var(--color-border)') }}
+          onMouseLeave={(e) => { e.currentTarget.style.setProperty('background', 'transparent') }}
+        >
+          <Square size={11} />
+        </button>
+        <button
+          style={s.btn}
+          onClick={handleClose}
+          aria-label="Yopish"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.setProperty('background', '#e81123')
+            e.currentTarget.style.setProperty('color', '#fff')
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.setProperty('background', 'transparent')
+            e.currentTarget.style.setProperty('color', 'var(--color-text)')
+          }}
+        >
+          <X size={14} />
+        </button>
+      </div>
     </div>
   )
 }
