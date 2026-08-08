@@ -1,5 +1,6 @@
-import { app, IpcMain, BrowserWindow, nativeTheme, safeStorage } from 'electron'
+import { app, IpcMain, BrowserWindow, dialog, nativeTheme, safeStorage } from 'electron'
 import Store from 'electron-store'
+import fs from 'node:fs'
 
 // electron-store's own `encryptionKey` (see electron/main.ts) is a fixed
 // string baked into every install, so it only obfuscates the file on disk —
@@ -99,5 +100,22 @@ export function initIpcHandlers(ipcMain: IpcMain, store: Store): void {
   ipcMain.handle('window:close', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     win?.close()
+  })
+
+  // Exports (Statistics CSV, etc.) go through a native Save dialog instead
+  // of silently dropping into the OS default Downloads folder — the cashier
+  // picks the destination (and can rename the file) every time, same as
+  // "Save As" in any desktop app. Content is written as-is (renderer already
+  // includes the UTF-8 BOM + sep=, hint needed for it to open cleanly in
+  // Excel), so this handler only owns the dialog + disk write.
+  ipcMain.handle('file:saveCsv', async (event, defaultName: string, content: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const dialogOpts = { defaultPath: defaultName, filters: [{ name: 'CSV', extensions: ['csv'] }] }
+    const { canceled, filePath } = win
+      ? await dialog.showSaveDialog(win, dialogOpts)
+      : await dialog.showSaveDialog(dialogOpts)
+    if (canceled || !filePath) return { saved: false as const }
+    await fs.promises.writeFile(filePath, content, 'utf8')
+    return { saved: true as const, filePath }
   })
 }

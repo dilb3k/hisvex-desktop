@@ -40,6 +40,10 @@ const electronAPI = {
   },
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
   isWindows: () => process.platform === 'win32',
+  saveCsv: (defaultName: string, content: string) =>
+    ipcRenderer.invoke('file:saveCsv', defaultName, content) as Promise<
+      { saved: true; filePath: string } | { saved: false }
+    >,
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

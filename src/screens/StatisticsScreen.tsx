@@ -624,7 +624,7 @@ export function StatisticsScreen() {
     setShowDatePicker(true)
   }
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!inventoryItems.length) return
     // Column order/format matches the paper/Excel ledger businesses already
     // keep (№, Tovar, Olingan/Sotilish narhi, Soni/Qoldi/Sotildi, then the
@@ -670,12 +670,29 @@ export function StatisticsScreen() {
     // Escape embedded double quotes in every cell before wrapping it in
     // quotes — a product name/note containing a literal `"` would otherwise
     // break the CSV's column structure (backported from web's fix).
-    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    //
+    // `sep=,` as the first line is a Microsoft-specific hint: without it,
+    // Excel picks its delimiter from the OS's regional "list separator"
+    // setting, which on an Uzbek/Russian-locale Windows machine is `;`, not
+    // `,` — so every row lands crammed into column A instead of split into
+    // columns. The hint forces comma parsing regardless of locale.
+    const csv = 'sep=,\n' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const fileName = `hisobot-${range.from}-${range.to}.csv`
+    const content = '﻿' + csv
+
+    // Desktop build: ask where to save via a native dialog every time,
+    // instead of silently dropping into the OS default Downloads folder.
+    if (window.electronAPI?.saveCsv) {
+      await window.electronAPI.saveCsv(fileName, content)
+      return
+    }
+
+    // Fallback (e.g. running in a plain browser during development).
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `hisobot-${range.from}-${range.to}.csv`
+    a.download = fileName
     a.click()
     URL.revokeObjectURL(url)
   }

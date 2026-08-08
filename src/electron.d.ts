@@ -24,6 +24,7 @@ interface ElectronAPI {
   onMaximizeChange: (callback: (maximized: boolean) => void) => () => void
   isMaximized: () => Promise<boolean>
   isWindows: () => boolean
+  saveCsv: (defaultName: string, content: string) => Promise<{ saved: true; filePath: string } | { saved: false }>
 }
 
 interface Window {
