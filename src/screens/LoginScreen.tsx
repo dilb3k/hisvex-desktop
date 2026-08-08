@@ -399,46 +399,22 @@ export function LoginScreen() {
                           ?
                         </button>
                       </div>
-                      {/* Hour must be selected from a grid, not typed/stepped —
-                          matches the picker used on SettingsScreen. The previous
-                          react-datepicker customInput was declared inline inside
-                          this component, so it got recreated (and remounted,
-                          losing focus) on every render. */}
-                      <div
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(6, 1fr)',
-                          gap: 6,
-                          padding: 10,
-                          borderRadius: 10,
-                          background: 'rgba(255,255,255,0.04)',
-                          border: '1.5px solid rgba(124,58,237,0.2)',
-                        }}
+                      {/* Hour must be selected from a dropdown, not typed —
+                          the previous react-datepicker customInput was declared
+                          inline inside this component, so it got recreated (and
+                          remounted, losing focus) on every render. */}
+                      <select
+                        value={businessDayStartHour}
+                        onChange={(e) => setBusinessDayStartHour(e.target.value)}
+                        onFocus={() => setFocusedField('businessHour')}
+                        onBlur={() => setFocusedField(null)}
+                        style={{ ...inputStyle(focusedField === 'businessHour'), cursor: 'pointer' }}
                       >
-                        {Array.from({ length: 24 }, (_, h) => h).map((h) => {
-                          const selected = businessDayStartHour === String(h)
-                          return (
-                            <button
-                              key={h}
-                              type="button"
-                              onClick={() => setBusinessDayStartHour(String(h))}
-                              style={{
-                                padding: '8px 0',
-                                borderRadius: 7,
-                                border: selected ? 'none' : '1px solid rgba(124,58,237,0.2)',
-                                background: selected ? '#7c3aed' : 'rgba(255,255,255,0.03)',
-                                color: selected ? '#fff' : 'rgba(255,255,255,0.75)',
-                                fontSize: 12,
-                                fontWeight: selected ? 700 : 500,
-                                fontVariantNumeric: 'tabular-nums',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              {String(h).padStart(2, '0')}
-                            </button>
-                          )
-                        })}
-                      </div>
+                        <option value="" disabled>{t('businessDayStartHourPlaceholder')}</option>
+                        {Array.from({ length: 24 }, (_, h) => h).map((h) => (
+                          <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                        ))}
+                      </select>
                     </div>
                   </>
                 )}
