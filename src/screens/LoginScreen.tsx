@@ -1,6 +1,4 @@
-import { useState, forwardRef } from 'react'
-import DatePicker from 'react-datepicker'
-import 'react-datepicker/dist/react-datepicker.css'
+import { useState } from 'react'
 import { authApi } from '../api/client'
 import { useAuthStore } from '../store/authStore'
 import { t } from '../i18n'
@@ -45,27 +43,6 @@ export function LoginScreen() {
   const [focusedField, setFocusedField] = useState<string | null>(null)
   const setAuth = useAuthStore((s) => s.setAuth)
   const isLoginMode = mode === 'login'
-
-  const hourDate = (() => {
-    const d = new Date()
-    const h = parseInt(businessDayStartHour, 10)
-    d.setHours(Number.isInteger(h) && h >= 0 && h <= 23 ? h : 6, 0, 0, 0)
-    return d
-  })()
-
-  const HourInput = forwardRef<HTMLInputElement, { value?: string; onClick?: () => void }>(({ value, onClick }, ref) => (
-    <input
-      ref={ref}
-      onClick={onClick}
-      readOnly
-      value={value ?? ''}
-      onFocus={() => setFocusedField('businessHour')}
-      onBlur={() => setFocusedField(null)}
-      style={inputStyle(focusedField === 'businessHour')}
-      placeholder={t('businessDayStartHourPlaceholder')}
-    />
-  ))
-  HourInput.displayName = 'HourInput'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -422,18 +399,46 @@ export function LoginScreen() {
                           ?
                         </button>
                       </div>
-                      <DatePicker
-                        selected={hourDate}
-                        onChange={(date: Date | null) => { if (date) setBusinessDayStartHour(String(date.getHours())) }}
-                        showTimeSelect
-                        showTimeSelectOnly
-                        timeIntervals={60}
-                        timeFormat="HH:00"
-                        dateFormat="HH:00"
-                        timeCaption={t('businessDayStartHour')}
-                        customInput={<HourInput />}
-                        popperPlacement="bottom-start"
-                      />
+                      {/* Hour must be selected from a grid, not typed/stepped —
+                          matches the picker used on SettingsScreen. The previous
+                          react-datepicker customInput was declared inline inside
+                          this component, so it got recreated (and remounted,
+                          losing focus) on every render. */}
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(6, 1fr)',
+                          gap: 6,
+                          padding: 10,
+                          borderRadius: 10,
+                          background: 'rgba(255,255,255,0.04)',
+                          border: '1.5px solid rgba(124,58,237,0.2)',
+                        }}
+                      >
+                        {Array.from({ length: 24 }, (_, h) => h).map((h) => {
+                          const selected = businessDayStartHour === String(h)
+                          return (
+                            <button
+                              key={h}
+                              type="button"
+                              onClick={() => setBusinessDayStartHour(String(h))}
+                              style={{
+                                padding: '8px 0',
+                                borderRadius: 7,
+                                border: selected ? 'none' : '1px solid rgba(124,58,237,0.2)',
+                                background: selected ? '#7c3aed' : 'rgba(255,255,255,0.03)',
+                                color: selected ? '#fff' : 'rgba(255,255,255,0.75)',
+                                fontSize: 12,
+                                fontWeight: selected ? 700 : 500,
+                                fontVariantNumeric: 'tabular-nums',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {String(h).padStart(2, '0')}
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
                   </>
                 )}

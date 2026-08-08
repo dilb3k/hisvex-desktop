@@ -562,6 +562,7 @@ export function DebtorsScreen() {
 
       {showAddModal && (
         <div style={overlay}>
+          <div style={modalContainer}>
           <div style={modalHeader}>
             <button onClick={() => setShowAddModal(false)} style={iconBtnStyle}>
               <ArrowLeft size={20} />
@@ -634,11 +635,13 @@ export function DebtorsScreen() {
               {saving ? t('loading') : t('save')}
             </button>
           </div>
+          </div>
         </div>
       )}
 
       {showDetailModal && selectedDebtor && (
         <div style={overlay}>
+          <div style={modalContainer}>
           <div style={modalHeader}>
             <button onClick={() => { setShowDetailModal(false); setSelectedDebtor(null) }} style={iconBtnStyle}>
               <ArrowLeft size={20} />
@@ -834,11 +837,13 @@ export function DebtorsScreen() {
               </button>
             </div>
           </div>
+          </div>
         </div>
       )}
 
       {showEditModal && selectedDebtor && (
         <div style={overlay}>
+          <div style={modalContainer}>
           <div style={modalHeader}>
             <button onClick={() => { setShowEditModal(false); setSelectedDebtor(null) }} style={iconBtnStyle}>
               <ArrowLeft size={20} />
@@ -902,6 +907,7 @@ export function DebtorsScreen() {
             >
               {saving ? t('loading') : t('save')}
             </button>
+          </div>
           </div>
         </div>
       )}
