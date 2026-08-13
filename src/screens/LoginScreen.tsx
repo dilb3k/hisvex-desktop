@@ -131,15 +131,21 @@ export function LoginScreen() {
   }
 
   return (
+    // `height: 100%` (not `100vh`) — this now renders inside the flex slot
+    // left under Titlebar (see App.tsx), which on Windows is shorter than
+    // the viewport by the titlebar's height. `100vh` here would overflow
+    // that slot, and since html/body/#root clip overflow (globals.css), the
+    // bottom of the form was being cut off behind the titlebar instead of
+    // scrolling into view.
     <div style={{
-      minHeight: '100vh',
+      height: '100%',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       background: '#070512',
       padding: 32,
       position: 'relative',
-      overflow: 'hidden',
+      overflow: 'auto',
     }}>
       {/* Background gradients */}
       <div style={{

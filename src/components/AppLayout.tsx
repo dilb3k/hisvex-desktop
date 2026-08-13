@@ -1,6 +1,5 @@
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
-import { Titlebar } from './Titlebar'
 import { useAppStore } from '../store/appStore'
 import { X, AlertTriangle, CheckCircle, Info } from 'lucide-react'
 
@@ -17,7 +16,6 @@ export function AppLayout() {
         overflow: 'hidden',
         background: 'var(--color-bg)',
       }}>
-        <Titlebar />
         {error && (
           <div
             className="animate-slideUp"
