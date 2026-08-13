@@ -414,11 +414,29 @@ export function LoginScreen() {
                         onChange={(e) => setBusinessDayStartHour(e.target.value)}
                         onFocus={() => setFocusedField('businessHour')}
                         onBlur={() => setFocusedField(null)}
-                        style={{ ...inputStyle(focusedField === 'businessHour'), cursor: 'pointer' }}
+                        style={{
+                          ...inputStyle(focusedField === 'businessHour'),
+                          cursor: 'pointer',
+                          // `color` above cascades into <option>, but `background`
+                          // does not — on Windows/Chromium the native dropdown
+                          // popup then falls back to its default white background,
+                          // leaving the inherited near-white text invisible.
+                          // colorScheme tells Chromium to render that native
+                          // popup (and its options) using a dark palette.
+                          colorScheme: 'dark',
+                        }}
                       >
-                        <option value="" disabled>{t('businessDayStartHourPlaceholder')}</option>
+                        <option value="" disabled style={{ background: '#0F0A2E', color: 'rgba(255,255,255,0.9)' }}>
+                          {t('businessDayStartHourPlaceholder')}
+                        </option>
                         {Array.from({ length: 24 }, (_, h) => h).map((h) => (
-                          <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                          <option
+                            key={h}
+                            value={h}
+                            style={{ background: '#0F0A2E', color: 'rgba(255,255,255,0.9)' }}
+                          >
+                            {String(h).padStart(2, '0')}:00
+                          </option>
                         ))}
                       </select>
                     </div>
