@@ -14,7 +14,7 @@
 import { healthApi } from '../api/client'
 
 const DEBOUNCE_MS = 1500
-const HEALTH_CHECK_INTERVAL_MS = 25000
+const HEALTH_CHECK_INTERVAL_MS = 10000
 
 let currentOnline: boolean = typeof navigator !== 'undefined' ? navigator.onLine : true
 const listeners = new Set<(online: boolean) => void>()
@@ -51,11 +51,16 @@ async function checkBackendReachable(): Promise<boolean> {
 }
 
 async function runHealthCheck() {
-  // If the OS itself reports no network interface, don't bother round-tripping.
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    commit(false)
-    return
-  }
+  // Real-bug fix: this used to skip the actual backend round-trip whenever
+  // navigator.onLine reported false, on the assumption that flag is a
+  // reliable negative signal. On Windows it isn't — Chromium's 'online'
+  // event (and the onLine flag with it) can fail to fire or stay stuck
+  // false after a real reconnect (Wi-Fi hand-off, VPN toggle, sleep/wake),
+  // which permanently starved this periodic check from ever re-verifying
+  // reachability: the app stayed "stuck offline" — and every fetch gated
+  // on isOnline() kept erroring or silently queuing — until the process
+  // was restarted. Always attempt the real check; healthApi.check() has
+  // its own short timeout so a genuinely offline probe still fails fast.
   const reachable = await checkBackendReachable()
   commit(reachable)
 }

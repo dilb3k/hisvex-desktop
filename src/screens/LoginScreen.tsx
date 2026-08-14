@@ -131,12 +131,12 @@ export function LoginScreen() {
   }
 
   return (
-    // `height: 100%` (not `100vh`) — this now renders inside the flex slot
-    // left under Titlebar (see App.tsx), which on Windows is shorter than
-    // the viewport by the titlebar's height. `100vh` here would overflow
-    // that slot, and since html/body/#root clip overflow (globals.css), the
-    // bottom of the form was being cut off behind the titlebar instead of
-    // scrolling into view.
+    // `height: 100%` (not `100vh`) — Titlebar (see App.tsx) is a hover-reveal
+    // overlay on Windows, not a flex sibling, so this always fills the full
+    // window height; `100vh` here would double-count against html/body/#root
+    // (which already clip to the viewport, see globals.css) in some
+    // webview edge cases and risk clipping the bottom of the form instead
+    // of scrolling it into view.
     <div style={{
       height: '100%',
       display: 'flex',

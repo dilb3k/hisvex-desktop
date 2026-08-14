@@ -302,7 +302,11 @@ export const adminsApi = {
 }
 
 export const healthApi = {
-  check: () => api.get('/health'),
+  // Short dedicated timeout — this is a connectivity probe polled every
+  // few seconds by utils/network.ts, not a real data fetch, so it should
+  // fail fast when genuinely offline instead of hanging on the default
+  // 15s request timeout.
+  check: () => api.get('/health', { timeout: 5000 }),
 }
 
 const IMAGE_HASH_REGEX = /^[a-f0-9]{64}$/
