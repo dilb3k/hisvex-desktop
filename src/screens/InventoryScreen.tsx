@@ -547,7 +547,6 @@ export function InventoryScreen() {
   const content = () => (
     <>
       <PageHeader
-        title={t('inventory')}
         actions={isPastDate ? <span className="badge badge-danger">{t('readOnly')}</span> : undefined}
       />
       {renderDateNav()}
@@ -580,7 +579,6 @@ export function InventoryScreen() {
   if (isFutureDate) {
     return (
       <div>
-        <PageHeader title={t('inventory')} />
         {renderDateNav()}
         <div style={s.emptyWrap}>
           <Package size={48} style={{ opacity: 0.3, marginBottom: 12 }} />

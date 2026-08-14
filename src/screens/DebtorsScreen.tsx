@@ -416,8 +416,6 @@ export function DebtorsScreen() {
       )}
 
       <PageHeader
-        title={t('debtors')}
-        subtitle={t('debtorsSubtitle')}
         actions={
           <button
             onClick={() => setShowAddModal(true)}

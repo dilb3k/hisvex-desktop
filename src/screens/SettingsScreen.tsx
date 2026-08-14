@@ -320,8 +320,6 @@ export function SettingsScreen() {
 
   return (
     <div style={{ maxWidth: 520, margin: '0 auto', paddingBottom: 40 }}>
-      <PageHeader title={t('settingsTitle')} subtitle={t('settingsSubtitle')} />
-
       {/* User Info */}
       {user && (
         <div style={sectionStyle}>

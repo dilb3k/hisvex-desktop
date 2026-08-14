@@ -797,7 +797,6 @@ export function StatisticsScreen() {
       {/* Page header */}
       <div style={s.pageHeader}>
         <div>
-          <h2 style={s.pageTitle}>{t('statistics')}</h2>
           <p style={s.pageSubtitle}>{periodLabel}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>

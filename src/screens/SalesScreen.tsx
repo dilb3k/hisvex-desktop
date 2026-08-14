@@ -328,7 +328,6 @@ export function SalesScreen() {
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <PageHeader title={t('sales')} subtitle={t('salesSubtitle')} />
         <SalesSkeleton />
       </div>
     )
@@ -340,8 +339,6 @@ export function SalesScreen() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <PageHeader
-        title={t('sales')}
-        subtitle={t('salesSubtitle')}
         actions={
           <button onClick={() => { setBarcodeError(null); setShowBarcode(true) }} className="btn btn-secondary btn-icon" title={t('scanBarcode')}>
             <Scan size={18} />

@@ -185,7 +185,6 @@ export function UsersScreen() {
   return (
     <div>
       <PageHeader
-        title={t('usersTitle')}
         actions={
           <button
             onClick={handleLogout}
