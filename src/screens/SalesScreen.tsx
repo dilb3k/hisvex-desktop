@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useAppStore } from '../store/appStore'
 import { inventoryApi, resolveImageUrl, getDeviceId } from '../api/client'
 import { isOnline, isNetworkError } from '../utils/network'
@@ -6,7 +6,6 @@ import { enqueue, getQueueSnapshot, subscribe as subscribeQueue } from '../store
 import type { QueuedInventory } from '../store/offlineQueue'
 import { Minus, Plus, Package, Scan, Search, ShoppingBag, X, Wallet, ShoppingCart, Trash2, AlertTriangle, RefreshCw } from 'lucide-react'
 import { t } from '../i18n'
-import { PageHeader } from '../components/PageHeader'
 import type { InventoryItem, Product } from '../types'
 import { getBusinessDate } from '../utils/businessDay'
 import { resolveSellPrice, formatMoney } from '../utils/inventory'
@@ -202,10 +201,18 @@ export function SalesScreen() {
     setCart({})
   }, [])
 
-  // Real-bug fix: this used to silently close the modal on ANY failure
-  // (barcode not found, out of stock, already at cart max) with zero
-  // feedback. Now it keeps the modal open and shows the specific reason,
-  // mirroring the web app's already-correct pattern.
+  const barcodeInputRef = useRef<HTMLInputElement>(null)
+
+  // Barcode lookup is keyed off `products`/`inventoryItems`, both already
+  // in-memory maps/arrays kept in sync via useMemo above — a scan is a
+  // synchronous .find() over local state, no network round-trip, so it
+  // resolves in well under a millisecond. The scanner "feeling slow" was
+  // a UX issue, not a lookup one: the modal used to close itself after
+  // every single successful scan, forcing the cashier to reopen it by
+  // hand before the next item. Now it stays open and the input refocuses
+  // immediately so a wedge/USB scanner can fire scan after scan with zero
+  // clicks in between; a barcode NOT found in the database is rejected
+  // (see the `!product` branch below) and never added to the cart.
   const handleBarcodeSubmit = useCallback(() => {
     const code = barcodeInput.trim()
     if (!code) return
@@ -213,6 +220,8 @@ export function SalesScreen() {
     const product = products.find(p => p.barcodes?.includes(code))
     if (!product) {
       setBarcodeError(t('barcodeNotFound'))
+      setBarcodeInput('')
+      barcodeInputRef.current?.focus()
       return
     }
 
@@ -221,6 +230,8 @@ export function SalesScreen() {
     )
     if (!invItem || invItem.currentQuantity <= 0) {
       setBarcodeError(t('noStock'))
+      setBarcodeInput('')
+      barcodeInputRef.current?.focus()
       return
     }
 
@@ -228,14 +239,19 @@ export function SalesScreen() {
     const alreadyInCart = cart[key] || 0
     if (alreadyInCart >= invItem.currentQuantity) {
       setBarcodeError(t('maxStockReached'))
+      setBarcodeInput('')
+      barcodeInputRef.current?.focus()
       return
     }
 
     setCart(prev => ({ ...prev, [key]: alreadyInCart + 1 }))
     setBarcodeInput('')
     setBarcodeError(null)
-    setShowBarcode(false)
-  }, [barcodeInput, products, inventoryItems, cart])
+    showToast(product.name, 'success')
+    // Stay open for the next scan instead of closing — a cashier scanning
+    // several items in a row shouldn't have to reopen this modal each time.
+    barcodeInputRef.current?.focus()
+  }, [barcodeInput, products, inventoryItems, cart, showToast])
 
   // Applies the sale to local state and queues it for background sync
   // instead of the direct API call — used both when we're already known to
@@ -338,14 +354,6 @@ export function SalesScreen() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <PageHeader
-        actions={
-          <button onClick={() => { setBarcodeError(null); setShowBarcode(true) }} className="btn btn-secondary btn-icon" title={t('scanBarcode')}>
-            <Scan size={18} />
-          </button>
-        }
-      />
-
       <div style={{ marginBottom: 16 }}>
         <div style={{
           display: 'flex',
@@ -611,6 +619,7 @@ export function SalesScreen() {
               {t('barcode')}ni kiriting
             </h3>
             <input
+              ref={barcodeInputRef}
               type="text"
               autoFocus
               placeholder={t('barcode')}
@@ -669,7 +678,7 @@ export function SalesScreen() {
                   cursor: 'pointer',
                 }}
               >
-                {t('cancel')}
+                {t('close')}
               </button>
             </div>
           </div>
