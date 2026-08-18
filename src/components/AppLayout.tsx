@@ -37,6 +37,7 @@ export function AppLayout() {
             <button
               onClick={clearError}
               aria-label="Close error"
+              title="Close error"
               style={{
                 background: 'none',
                 border: 'none',
@@ -46,7 +47,10 @@ export function AppLayout() {
                 borderRadius: 4,
                 display: 'flex',
                 opacity: 0.7,
+                transition: 'opacity 0.15s',
               }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.7' }}
             >
               <X size={16} />
             </button>

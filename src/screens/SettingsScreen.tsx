@@ -358,7 +358,10 @@ export function SettingsScreen() {
                   ? 'rgba(34,197,94,0.06)'
                   : 'var(--color-surface)',
               cursor: 'pointer',
+              transition: 'box-shadow 0.15s',
             }}
+            onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{
@@ -494,6 +497,8 @@ export function SettingsScreen() {
                   color: selected ? 'var(--color-primary)' : 'var(--color-text)',
                   fontWeight: selected ? 700 : 600,
                 }}
+                onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+                onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface)' }}
               >
                 {lang.label}
               </button>
@@ -523,6 +528,8 @@ export function SettingsScreen() {
                   color: selected ? 'var(--color-primary)' : 'var(--color-text)',
                   fontWeight: selected ? 700 : 600,
                 }}
+                onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+                onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface)' }}
               >
                 <Icon size={18} />
                 {item.code === 'light' ? t('light') : t('dark')}
@@ -548,7 +555,10 @@ export function SettingsScreen() {
             width: '100%',
             cursor: 'pointer',
             textAlign: 'left',
+            transition: 'background 0.15s',
           }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-surface)' }}
         >
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)' }}>{t('businessDayHour')}</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -577,7 +587,10 @@ export function SettingsScreen() {
             gap: 12,
             textDecoration: 'none',
             cursor: 'pointer',
+            transition: 'background 0.15s',
           }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-surface)' }}
         >
           <MessageCircle size={20} color="#0088cc" />
           <span style={{ fontSize: 14, fontWeight: 600, color: '#0088cc' }}>Telegram: @dilbek7011</span>
@@ -601,7 +614,10 @@ export function SettingsScreen() {
             fontSize: 14,
             background: 'rgba(239,68,68,0.08)',
             borderColor: 'rgba(239,68,68,0.3)',
+            transition: 'background 0.15s',
           }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.16)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)' }}
         >
           <LogOut size={20} />
           {t('logout')}
@@ -625,11 +641,19 @@ export function SettingsScreen() {
               padding: '16px 20px', borderBottom: '1px solid var(--color-border)',
             }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{t('subscriptionDetails')}</h3>
-              <button onClick={() => setShowTariffs(false)} style={{
-                width: 32, height: 32, borderRadius: 8, border: 'none',
-                background: 'transparent', color: 'var(--color-text-secondary)',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}><X size={20} /></button>
+              <button
+                onClick={() => setShowTariffs(false)}
+                title={t('close')}
+                aria-label={t('close')}
+                style={{
+                  width: 32, height: 32, borderRadius: 8, border: 'none',
+                  background: 'transparent', color: 'var(--color-text-secondary)',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              ><X size={20} /></button>
             </div>
 
             <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -765,7 +789,10 @@ export function SettingsScreen() {
             width: '100%',
             cursor: 'pointer',
             textAlign: 'left',
+            transition: 'background 0.15s',
           }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-surface)' }}
         >
           <div style={{
             width: 40,
@@ -829,6 +856,8 @@ export function SettingsScreen() {
               </h3>
               <button
                 onClick={() => setShowBusinessDay(false)}
+                title={t('close')}
+                aria-label={t('close')}
                 style={{
                   width: 32,
                   height: 32,
@@ -840,7 +869,10 @@ export function SettingsScreen() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  transition: 'background 0.15s',
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
               >
                 <X size={20} />
               </button>
@@ -908,7 +940,10 @@ export function SettingsScreen() {
                         fontWeight: selected ? 700 : 500,
                         fontVariantNumeric: 'tabular-nums',
                         cursor: 'pointer',
+                        transition: 'background 0.15s',
                       }}
+                      onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+                      onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface)' }}
                     >
                       {String(h).padStart(2, '0')}
                     </button>
@@ -996,6 +1031,8 @@ export function SettingsScreen() {
               </div>
               <button
                 onClick={() => setShowBlockModal(false)}
+                title={t('close')}
+                aria-label={t('close')}
                 style={{
                   width: 32,
                   height: 32,
@@ -1007,7 +1044,10 @@ export function SettingsScreen() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  transition: 'background 0.15s',
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
               >
                 <X size={20} />
               </button>
@@ -1055,7 +1095,6 @@ export function SettingsScreen() {
                   fontSize: 28,
                   fontWeight: 700,
                   textAlign: 'center',
-                  outline: 'none',
                   letterSpacing: 14,
                   caretColor: 'var(--color-primary)',
                   fontVariantNumeric: 'tabular-nums',

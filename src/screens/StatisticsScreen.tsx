@@ -293,6 +293,7 @@ const s = {
     width: 32, height: 32, borderRadius: 8, border: 'none',
     background: 'transparent', color: 'var(--color-text-secondary)',
     fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    transition: 'background 0.15s',
   },
   allTimeRangeRow: { display: 'flex' as const, gap: 10, padding: 20, paddingBottom: 10 },
   rangeBtn: {
@@ -822,13 +823,24 @@ export function StatisticsScreen() {
             </button>
           ))}
         </div>
-        <button onClick={handleRefresh} style={{ ...s.refreshBtn, opacity: loading ? 0.6 : 1 }}>
+        <button
+          onClick={handleRefresh}
+          style={{ ...s.refreshBtn, opacity: loading ? 0.6 : 1 }}
+          title={t('refresh')}
+          aria-label={t('refresh')}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-surface)' }}
+        >
           <RefreshCw size={17} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
         </button>
       </div>
 
       <div style={s.dateNav}>
-        <button onClick={handlePrev} style={s.navBtn}><ChevronLeft size={18} /></button>
+        <button
+          onClick={handlePrev} style={s.navBtn} title="Oldingi" aria-label="Oldingi"
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.28)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)' }}
+        ><ChevronLeft size={18} /></button>
         <div style={s.dateLabel} onClick={handleDateLabelClick}>
           <div style={s.dateLabelText}>{periodLabel}</div>
           {range.from !== range.to && (
@@ -837,7 +849,11 @@ export function StatisticsScreen() {
             </div>
           )}
         </div>
-        <button onClick={handleNext} style={s.navBtn}><ChevronRight size={18} /></button>
+        <button
+          onClick={handleNext} style={s.navBtn} title="Keyingi" aria-label="Keyingi"
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.28)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)' }}
+        ><ChevronRight size={18} /></button>
       </div>
 
       {/* Loading skeleton (no bare spinner) */}
@@ -994,7 +1010,14 @@ export function StatisticsScreen() {
           <div style={{ ...s.modal, maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <div style={s.modalHeader}>
               <h3 style={s.modalTitle}>{t('allTimeStatisticsTitle')}</h3>
-              <button style={s.modalClose} onClick={() => setShowAllTime(false)}><X size={18} /></button>
+              <button
+                style={s.modalClose}
+                onClick={() => setShowAllTime(false)}
+                title={t('close')}
+                aria-label={t('close')}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              ><X size={18} /></button>
             </div>
 
             {/* Date Range */}

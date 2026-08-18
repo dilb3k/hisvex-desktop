@@ -76,8 +76,8 @@ const s: Record<string, React.CSSProperties> = {
   fieldRow: { display: 'flex', justifyContent: 'space-between', padding: '11px 0', borderBottom: '1px solid var(--color-border)' },
   fieldLabel: { fontSize: 14, color: 'var(--color-text-secondary)' },
   fieldValue: { fontSize: 14, fontWeight: 600 },
-  modalInput: { width: 130, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text)', fontSize: 14, textAlign: 'right', outline: 'none' },
-  modalInputError: { width: 130, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--color-danger)', background: 'var(--color-bg)', color: 'var(--color-text)', fontSize: 14, textAlign: 'right', outline: 'none', boxShadow: '0 0 0 3px var(--color-danger-soft)' },
+  modalInput: { width: 130, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text)', fontSize: 14, textAlign: 'right' },
+  modalInputError: { width: 130, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--color-danger)', background: 'var(--color-bg)', color: 'var(--color-text)', fontSize: 14, textAlign: 'right', boxShadow: '0 0 0 3px var(--color-danger-soft)' },
   // Explains why "start" is read-only — mobile already has this hint,
   // ported here so desktop's modal doesn't leave the read-only field
   // unexplained.
@@ -366,14 +366,14 @@ export function InventoryScreen() {
 
   const renderDateNav = () => (
     <div style={s.dateNav}>
-      <button onClick={goToPrevDay} style={s.dateNavBtn}><ChevronLeft size={18} /></button>
+      <button onClick={goToPrevDay} style={s.dateNavBtn} title="Oldingi kun" aria-label="Oldingi kun"><ChevronLeft size={18} /></button>
       <DatePicker
         selected={dayjs(selectedDate).toDate()}
         onChange={(date: Date | null) => { if (date) setSelectedDate(dayjs(date).format('YYYY-MM-DD')) }}
         dateFormat="DD MMM YYYY"
         customInput={<DateInput />}
       />
-      <button onClick={goToNextDay} style={s.dateNavBtn}><ChevronRight size={18} /></button>
+      <button onClick={goToNextDay} style={s.dateNavBtn} title="Keyingi kun" aria-label="Keyingi kun"><ChevronRight size={18} /></button>
     </div>
   )
 
@@ -417,7 +417,13 @@ export function InventoryScreen() {
     const productId = entry.inv?.productId ?? entry.product._id
     const isPendingSync = pendingOfflineIds.has(productId)
     return (
-      <div key={entry.product._id} style={s.card} onClick={() => openModal(entry)}>
+      <div
+        key={entry.product._id}
+        style={s.card}
+        onClick={() => openModal(entry)}
+        onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
+        onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none' }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
           <div style={{ width: 56, height: 56, borderRadius: 10, background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
             {(entry.product.image || entry.product.imageHash) ? (
@@ -539,7 +545,7 @@ export function InventoryScreen() {
       <Search size={17} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-secondary)', pointerEvents: 'none' }} />
       <input
         type="text" placeholder={t('search')} value={search} onChange={(e) => setSearch(e.target.value)}
-        style={{ width: '100%', padding: '11px 15px 11px 38px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: 14, outline: 'none' }}
+        style={{ width: '100%', padding: '11px 15px 11px 38px', borderRadius: 10, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: 14 }}
       />
     </div>
   )

@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useAuthStore } from '../store/authStore'
 import { useAppStore } from '../store/appStore'
 import { adminsApi } from '../api/client'
-import { Users, CreditCard, Shield, Pencil, Trash2, LogOut, X, Clock } from 'lucide-react'
+import { Users, CreditCard, Shield, Pencil, Trash2, LogOut, X, Clock, AlertTriangle, RefreshCw } from 'lucide-react'
 import { t } from '../i18n'
 import { PageHeader } from '../components/PageHeader'
 import { formatPhone } from '../utils/formatters'
@@ -53,7 +53,6 @@ const inputStyle: React.CSSProperties = {
   background: 'var(--color-surface)',
   color: 'var(--color-text)',
   fontSize: 14,
-  outline: 'none',
 }
 
 const labelStyle: React.CSSProperties = {
@@ -86,6 +85,34 @@ const btnSecondaryStyle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 500,
   cursor: 'pointer',
+}
+
+// Error banner — mirrors the Products/Sales/Inventory/Debtors/Statistics
+// screens' ErrorBanner treatment so a genuine fetch failure reads distinctly
+// from "no admins yet" instead of both collapsing into the same empty state.
+const errorBannerStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px',
+  borderRadius: 14, background: 'var(--color-danger-soft)', border: '1px solid rgba(239,68,68,0.25)',
+  marginBottom: 16,
+}
+const errorBannerTextStyle: React.CSSProperties = { flex: 1, fontSize: 13.5, fontWeight: 600, color: 'var(--color-danger)', margin: 0 }
+const errorBannerRetryBtnStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9,
+  border: 'none', background: 'var(--color-danger)', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+  flexShrink: 0,
+}
+
+function ErrorBanner({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div style={errorBannerStyle} role="alert">
+      <AlertTriangle size={20} color="var(--color-danger)" style={{ flexShrink: 0 }} />
+      <p style={errorBannerTextStyle}>{t('statsErrorTitle') || "Ma'lumotlarni yuklab bo'lmadi"}</p>
+      <button style={errorBannerRetryBtnStyle} onClick={onRetry}>
+        <RefreshCw size={13} />
+        {t('retryLabel') || 'Qayta urinish'}
+      </button>
+    </div>
+  )
 }
 
 function TierBadge({ tier }: { tier?: User['tier'] }) {
@@ -129,6 +156,10 @@ export function UsersScreen() {
   const showToast = useAppStore((s) => s.showToast)
   const [admins, setAdmins] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
+  // Distinguishes "genuinely no admins" from "the fetch itself failed" —
+  // without this, a fetch failure used to just toast and then render the
+  // empty state, which reads as "no admins" instead of a retryable error.
+  const [fetchError, setFetchError] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<User | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null)
@@ -140,10 +171,12 @@ export function UsersScreen() {
       return
     }
     setLoading(true)
+    setFetchError(false)
     try {
       const { data } = await adminsApi.getAll()
       setAdmins(data)
     } catch (err) {
+      setFetchError(true)
       showToast(err instanceof Error ? err.message : t('error'), 'error')
     } finally {
       setLoading(false)
@@ -238,6 +271,8 @@ export function UsersScreen() {
               animation: 'spin 0.8s linear infinite',
             }} />
           </div>
+        ) : fetchError ? (
+          <ErrorBanner onRetry={loadAdmins} />
         ) : admins.length === 0 ? (
           <div style={{
             display: 'flex',
@@ -340,6 +375,8 @@ export function UsersScreen() {
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button
                           onClick={() => setEditTarget(admin)}
+                          title={t('edit')}
+                          aria-label={t('edit')}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -351,12 +388,17 @@ export function UsersScreen() {
                             background: 'transparent',
                             color: 'var(--color-text-secondary)',
                             cursor: 'pointer',
+                            transition: 'background 0.15s, color 0.15s',
                           }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; e.currentTarget.style.color = 'var(--color-text)' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-secondary)' }}
                         >
                           <Pencil size={14} />
                         </button>
                         <button
                           onClick={() => setDeleteTarget(admin)}
+                          title={t('delete')}
+                          aria-label={t('delete')}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -368,7 +410,10 @@ export function UsersScreen() {
                             background: 'transparent',
                             color: 'var(--color-danger)',
                             cursor: 'pointer',
+                            transition: 'background 0.15s',
                           }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-danger-soft)' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -474,6 +519,8 @@ function AdminFormModal({
         </h3>
         <button
           onClick={onClose}
+          title={t('close')}
+          aria-label={t('close')}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -485,7 +532,10 @@ function AdminFormModal({
             background: 'transparent',
             color: 'var(--color-text-secondary)',
             cursor: 'pointer',
+            transition: 'background 0.15s',
           }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
         >
           <X size={20} />
         </button>
@@ -570,7 +620,10 @@ function AdminFormModal({
                       fontSize: 13,
                       fontWeight: selected ? 600 : 400,
                       cursor: 'pointer',
+                      transition: 'background 0.15s',
                     }}
+                    onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+                    onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = 'transparent' }}
                   >
                     <div style={{
                       width: 16,

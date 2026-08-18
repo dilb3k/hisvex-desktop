@@ -726,6 +726,8 @@ export function ProductsScreen() {
                   transition: 'box-shadow 0.15s',
                 }}
                 onClick={() => openEdit(item)}
+                onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none' }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 18px' }}>
                   <div style={{
@@ -837,6 +839,8 @@ export function ProductsScreen() {
                 {editingProduct && (
                   <button
                     onClick={() => { setDeleteTarget(editingProduct); setShowDeleteModal(true) }}
+                    title={t('delete')}
+                    aria-label={t('delete')}
                     style={{
                       width: 34,
                       height: 34,
@@ -847,13 +851,18 @@ export function ProductsScreen() {
                       alignItems: 'center',
                       justifyContent: 'center',
                       cursor: 'pointer',
+                      transition: 'filter 0.15s',
                     }}
+                    onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.1)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.filter = 'none' }}
                   >
                     <Trash2 size={16} color="#fff" />
                   </button>
                 )}
                 <button
                   onClick={closeProductModal}
+                  title={t('close') || t('cancel')}
+                  aria-label={t('close') || t('cancel')}
                   style={{
                     width: 34,
                     height: 34,
@@ -867,7 +876,10 @@ export function ProductsScreen() {
                     color: 'var(--color-text-secondary)',
                     fontSize: 20,
                     lineHeight: 1,
+                    transition: 'background 0.15s',
                   }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                 >
                   &times;
                 </button>
@@ -1021,6 +1033,8 @@ export function ProductsScreen() {
                   <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)' }}>Shtrixkodlar</span>
                   <button
                     onClick={handleAddBarcode}
+                    title="Shtrixkod qo'shish"
+                    aria-label="Shtrixkod qo'shish"
                     style={{
                       width: 24,
                       height: 24,
@@ -1033,7 +1047,10 @@ export function ProductsScreen() {
                       cursor: 'pointer',
                       marginLeft: 'auto',
                       flexShrink: 0,
+                      transition: 'filter 0.15s',
                     }}
+                    onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.1)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.filter = 'none' }}
                   >
                     <Plus size={12} color="#fff" />
                   </button>
@@ -1052,9 +1069,14 @@ export function ProductsScreen() {
                         fontSize: 12,
                       }}>
                         <span style={{ color: 'var(--color-text)' }}>{code}</span>
-                        <button onClick={() => handleRemoveBarcode(i)} style={{
-                          border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', color: 'var(--color-text-tertiary)',
-                        }}>
+                        <button
+                          onClick={() => handleRemoveBarcode(i)}
+                          title="Shtrixkodni o'chirish"
+                          aria-label="Shtrixkodni o'chirish"
+                          style={{
+                            border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', color: 'var(--color-text-tertiary)',
+                          }}
+                        >
                           <X size={12} />
                         </button>
                       </div>
@@ -1118,11 +1140,19 @@ export function ProductsScreen() {
           <div style={{ ...modalContainer, width: 440 }} onClick={(e) => e.stopPropagation()}>
             <div style={modalHeader}>
               <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>{t('restock')}</span>
-              <button onClick={closeRestockModal} style={{
-                width: 34, height: 34, borderRadius: 8, border: 'none', background: 'transparent',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                color: 'var(--color-text-secondary)', fontSize: 20, lineHeight: 1,
-              }}>&times;</button>
+              <button
+                onClick={closeRestockModal}
+                title={t('close') || t('cancel')}
+                aria-label={t('close') || t('cancel')}
+                style={{
+                  width: 34, height: 34, borderRadius: 8, border: 'none', background: 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                  color: 'var(--color-text-secondary)', fontSize: 20, lineHeight: 1,
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              >&times;</button>
             </div>
             <div style={modalBody}>
               <div style={{

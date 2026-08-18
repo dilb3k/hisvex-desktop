@@ -97,7 +97,7 @@ export function UpdateAvailableModal() {
         style={{
           position: 'relative',
           width: 380,
-          borderRadius: 16,
+          borderRadius: 'var(--radius-xl)',
           background: 'var(--color-bg-alt, #16161a)',
           border: '1px solid var(--color-border, rgba(124,58,237,0.25))',
           boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
@@ -112,8 +112,12 @@ export function UpdateAvailableModal() {
             width: 28, height: 28, borderRadius: '50%', border: 'none',
             background: 'rgba(255,255,255,0.06)', color: 'var(--color-text-secondary, #999)',
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'background 0.15s',
           }}
           title={t('updateLaterBtn')}
+          aria-label={t('updateLaterBtn')}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
         >
           <X size={14} />
         </button>
@@ -138,10 +142,13 @@ export function UpdateAvailableModal() {
         <button
           onClick={handleDownload}
           style={{
-            width: '100%', padding: '12px 0', borderRadius: 10, border: 'none',
+            width: '100%', padding: '12px 0', borderRadius: 'var(--radius-md)', border: 'none',
             background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
             color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10,
+            transition: 'filter 0.15s',
           }}
+          onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.08)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.filter = 'none' }}
         >
           {t('updateDownloadBtn')}
         </button>
@@ -149,21 +156,27 @@ export function UpdateAvailableModal() {
           <button
             onClick={handleLater}
             style={{
-              flex: 1, padding: '10px 0', borderRadius: 8,
+              flex: 1, padding: '10px 0', borderRadius: 'var(--radius-sm)',
               border: '1px solid var(--color-border, rgba(255,255,255,0.12))',
               background: 'transparent', color: 'var(--color-text-secondary, #999)',
               fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              transition: 'background 0.15s',
             }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
           >
             {t('updateLaterBtn')}
           </button>
           <button
             onClick={handleSkip}
             style={{
-              flex: 1, padding: '10px 0', borderRadius: 8, border: 'none',
+              flex: 1, padding: '10px 0', borderRadius: 'var(--radius-sm)', border: 'none',
               background: 'transparent', color: 'var(--color-text-secondary, #999)',
               fontSize: 12, cursor: 'pointer', textDecoration: 'underline',
+              transition: 'color 0.15s',
             }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-text, #fff)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-secondary, #999)' }}
           >
             {t('updateSkipBtn')}
           </button>

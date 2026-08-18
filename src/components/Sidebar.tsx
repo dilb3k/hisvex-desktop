@@ -119,10 +119,18 @@ export function Sidebar() {
         display: 'flex', flexDirection: 'column', flexShrink: 0, transition: 'width 0.2s',
       }}>
         <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: 3, borderBottom: '1px solid var(--color-border)' }}>
-          <button onClick={() => setCollapsed(false)} style={iconBtn} title="Expand">
+          <button
+            onClick={() => setCollapsed(false)} style={iconBtn} title="Expand"
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; e.currentTarget.style.color = 'var(--color-text)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-tertiary)' }}
+          >
             <ChevronRight size={20} />
           </button>
-          <button onClick={handleRefresh} style={iconBtn} title={t('refresh')}>
+          <button
+            onClick={handleRefresh} style={iconBtn} title={t('refresh')}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; e.currentTarget.style.color = 'var(--color-text)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-tertiary)' }}
+          >
             <RefreshCw size={20} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
           </button>
           <button
@@ -171,7 +179,11 @@ export function Sidebar() {
           ))}
         </nav>
         <div style={{ padding: '8px', borderTop: '1px solid var(--color-border)' }}>
-          <button onClick={logout} style={{ ...iconBtn, color: 'var(--color-danger)' }} title={t('logout')}>
+          <button
+            onClick={logout} style={{ ...iconBtn, color: 'var(--color-danger)' }} title={t('logout')}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-danger-soft)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+          >
             <LogOut size={20} />
           </button>
         </div>
@@ -195,10 +207,18 @@ export function Sidebar() {
           </div>
           <span style={{ fontSize: 19, fontWeight: 700, color: 'var(--color-primary)' }}>Hisvex</span>
         </div>
-        <button onClick={handleRefresh} style={{ ...iconBtn, width: 36, height: 36 }} title={t('refresh')}>
+        <button
+          onClick={handleRefresh} style={{ ...iconBtn, width: 36, height: 36 }} title={t('refresh')}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; e.currentTarget.style.color = 'var(--color-text)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-tertiary)' }}
+        >
           <RefreshCw size={18} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
         </button>
-        <button onClick={() => setCollapsed(true)} style={{ ...iconBtn, width: 36, height: 36 }} title="Collapse">
+        <button
+          onClick={() => setCollapsed(true)} style={{ ...iconBtn, width: 36, height: 36 }} title="Collapse"
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; e.currentTarget.style.color = 'var(--color-text)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-tertiary)' }}
+        >
           <ChevronLeft size={18} />
         </button>
       </div>
@@ -284,12 +304,18 @@ export function Sidebar() {
             </div>
           </div>
         )}
-        <button onClick={logout} style={{
-          display: 'flex', alignItems: 'center', gap: 12,
-          padding: '12px 14px', borderRadius: 12, width: '100%',
-          border: 'none', background: 'transparent',
-          color: 'var(--color-text-tertiary)', fontSize: 14, cursor: 'pointer',
-        }}>
+        <button
+          onClick={logout}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '12px 14px', borderRadius: 12, width: '100%',
+            border: 'none', background: 'transparent',
+            color: 'var(--color-text-tertiary)', fontSize: 14, cursor: 'pointer',
+            transition: 'background 0.15s, color 0.15s',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-danger-soft)'; e.currentTarget.style.color = 'var(--color-danger)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-tertiary)' }}
+        >
           <LogOut size={20} />
           {t('logout')}
         </button>

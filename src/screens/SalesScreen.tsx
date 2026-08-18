@@ -374,7 +374,6 @@ export function SalesScreen() {
               flex: 1,
               border: 'none',
               background: 'none',
-              outline: 'none',
               color: 'var(--color-text)',
               fontSize: 15,
               fontFamily: 'inherit',
@@ -383,13 +382,20 @@ export function SalesScreen() {
           {search && (
             <button
               onClick={() => setSearch('')}
+              title={t('clearSearch') || t('cancel')}
+              aria-label={t('clearSearch') || t('cancel')}
               style={{
                 background: 'none',
                 border: 'none',
                 color: 'var(--color-text-secondary)',
                 cursor: 'pointer',
                 padding: 2,
+                display: 'flex',
+                borderRadius: 4,
+                transition: 'color 0.15s',
               }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-text)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-secondary)' }}
             >
               <X size={16} />
             </button>
@@ -513,6 +519,8 @@ export function SalesScreen() {
                       <button
                         onClick={() => handleRemove(item.productId)}
                         disabled={cartQty === 0}
+                        title="Kamaytirish"
+                        aria-label="Kamaytirish"
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -525,6 +533,7 @@ export function SalesScreen() {
                           color: cartQty > 0 ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                           cursor: cartQty === 0 ? 'not-allowed' : 'pointer',
                           opacity: cartQty === 0 ? 0.5 : 1,
+                          transition: 'all 0.15s',
                         }}
                       >
                         <Minus size={18} />
@@ -541,6 +550,8 @@ export function SalesScreen() {
                       </span>
                       <button
                         onClick={() => handleAdd(item.productId, item.currentQuantity)}
+                        title="Ko'paytirish"
+                        aria-label="Ko'paytirish"
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -553,6 +564,7 @@ export function SalesScreen() {
                           color: cartQty < item.currentQuantity ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                           cursor: cartQty >= item.currentQuantity ? 'not-allowed' : 'pointer',
                           opacity: cartQty >= item.currentQuantity ? 0.5 : 1,
+                          transition: 'all 0.15s',
                         }}
                       >
                         <Plus size={18} />
@@ -635,7 +647,6 @@ export function SalesScreen() {
                 color: 'var(--color-text)',
                 fontSize: 16,
                 fontFamily: 'monospace',
-                outline: 'none',
                 marginBottom: barcodeError ? 8 : 16,
                 boxSizing: 'border-box',
               }}

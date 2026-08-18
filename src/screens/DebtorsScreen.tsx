@@ -38,7 +38,7 @@ const kpiCard: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.15)', marginBottom: 16,
 }
 const kpiIcon: React.CSSProperties = {
-  width: 46, height: 46, borderRadius: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  width: 46, height: 46, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
   flexShrink: 0, background: 'var(--color-danger-soft)', color: 'var(--color-danger)',
 }
 const kpiLabel: React.CSSProperties = { fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 2, fontWeight: 600 }
@@ -116,6 +116,12 @@ const iconBtnStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   borderRadius: 6,
+  transition: 'background 0.15s',
+}
+
+const iconBtnHoverHandlers = {
+  onMouseEnter: (e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = 'var(--color-surface-hover)' },
+  onMouseLeave: (e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = 'none' },
 }
 
 export function DebtorsScreen() {
@@ -466,14 +472,20 @@ export function DebtorsScreen() {
                   background: 'transparent',
                   color: 'var(--color-text)',
                   fontSize: 13,
-                  outline: 'none',
                   width: '100%',
                 }}
               />
               {search && (
                 <button
                   onClick={() => setSearch('')}
-                  style={{ background: 'none', border: 'none', color: 'var(--color-text-secondary)', cursor: 'pointer', padding: 2, display: 'flex' }}
+                  title={t('clearSearch')}
+                  aria-label={t('clearSearch')}
+                  style={{
+                    background: 'none', border: 'none', color: 'var(--color-text-secondary)',
+                    cursor: 'pointer', padding: 2, display: 'flex', borderRadius: 4, transition: 'color 0.15s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-text)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-secondary)' }}
                 >
                   <X size={14} />
                 </button>
@@ -514,6 +526,8 @@ export function DebtorsScreen() {
                     marginBottom: 8,
                     transition: 'box-shadow 0.15s',
                   }}
+                  onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none' }}
                 >
                   <div style={{
                     width: 32,
@@ -562,7 +576,7 @@ export function DebtorsScreen() {
         <div style={overlay}>
           <div style={modalContainer}>
           <div style={modalHeader}>
-            <button onClick={() => setShowAddModal(false)} style={iconBtnStyle}>
+            <button onClick={() => setShowAddModal(false)} style={iconBtnStyle} title={t('back')} aria-label={t('back')} {...iconBtnHoverHandlers}>
               <ArrowLeft size={20} />
             </button>
             <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0, flex: 1 }}>
@@ -641,16 +655,16 @@ export function DebtorsScreen() {
         <div style={overlay}>
           <div style={modalContainer}>
           <div style={modalHeader}>
-            <button onClick={() => { setShowDetailModal(false); setSelectedDebtor(null) }} style={iconBtnStyle}>
+            <button onClick={() => { setShowDetailModal(false); setSelectedDebtor(null) }} style={iconBtnStyle} title={t('back')} aria-label={t('back')} {...iconBtnHoverHandlers}>
               <ArrowLeft size={20} />
             </button>
             <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0, flex: 1 }}>
               {t('adjustDebt')}
             </h3>
-            <button onClick={handleEditFromDetail} style={iconBtnStyle} title={t('edit')}>
+            <button onClick={handleEditFromDetail} style={iconBtnStyle} title={t('edit')} aria-label={t('edit')} {...iconBtnHoverHandlers}>
               <Pencil size={18} />
             </button>
-            <button onClick={handleDeleteFromDetail} style={{ ...iconBtnStyle, color: 'var(--color-danger)' }} title={t('delete')}>
+            <button onClick={handleDeleteFromDetail} style={{ ...iconBtnStyle, color: 'var(--color-danger)' }} title={t('delete')} aria-label={t('delete')} {...iconBtnHoverHandlers}>
               <Trash2 size={18} />
             </button>
           </div>
@@ -806,7 +820,10 @@ export function DebtorsScreen() {
                   opacity: saving ? 0.6 : 1,
                   cursor: saving ? 'not-allowed' : 'pointer',
                   whiteSpace: 'nowrap',
+                  transition: 'filter 0.15s',
                 }}
+                onMouseEnter={(e) => { if (!saving) e.currentTarget.style.filter = 'brightness(1.08)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.filter = 'none' }}
               >
                 <Plus size={14} />
                 {t('addToDebt')}
@@ -828,7 +845,10 @@ export function DebtorsScreen() {
                   opacity: saving ? 0.6 : 1,
                   cursor: saving ? 'not-allowed' : 'pointer',
                   whiteSpace: 'nowrap',
+                  transition: 'filter 0.15s',
                 }}
+                onMouseEnter={(e) => { if (!saving) e.currentTarget.style.filter = 'brightness(1.08)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.filter = 'none' }}
               >
                 <Minus size={14} />
                 {t('subtractFromDebt')}
@@ -843,7 +863,7 @@ export function DebtorsScreen() {
         <div style={overlay}>
           <div style={modalContainer}>
           <div style={modalHeader}>
-            <button onClick={() => { setShowEditModal(false); setSelectedDebtor(null) }} style={iconBtnStyle}>
+            <button onClick={() => { setShowEditModal(false); setSelectedDebtor(null) }} style={iconBtnStyle} title={t('back')} aria-label={t('back')} {...iconBtnHoverHandlers}>
               <ArrowLeft size={20} />
             </button>
             <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0, flex: 1 }}>

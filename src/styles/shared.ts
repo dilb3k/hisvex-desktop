@@ -58,7 +58,10 @@ export const inputBase: CSSProperties = {
   background: 'var(--color-bg)',
   color: 'var(--color-text)',
   fontSize: 15,
-  outline: 'none',
+  // No `outline: 'none'` here — this inline style would win over the
+  // global `:focus-visible` rule in globals.css (inline always beats a
+  // stylesheet rule), silently killing the keyboard focus ring on every
+  // input built from this base. Leaving outline unset lets that rule apply.
   width: '100%',
   transition: 'border-color 0.2s, box-shadow 0.2s',
   fontFamily: 'inherit',
@@ -178,7 +181,8 @@ export const searchInput: CSSProperties = {
   background: 'var(--color-surface)',
   color: 'var(--color-text)',
   fontSize: 14,
-  outline: 'none',
+  // See inputBase above — no `outline: 'none'`, so the global
+  // `:focus-visible` ring still shows on keyboard/click focus.
   transition: 'border-color 0.2s, box-shadow 0.2s',
   fontFamily: 'inherit',
 }
