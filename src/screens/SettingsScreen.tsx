@@ -26,6 +26,7 @@ import {
   getPendingBusinessDayStartHour,
   getEffectiveFrom,
   scheduleBusinessDayStartHour,
+  syncBusinessDayFromServer,
 } from '../utils/businessDay'
 import { isBlockCodeDisabled, setBlockCodeDisabled } from '../utils/blockCode'
 import dayjs from 'dayjs'
@@ -147,11 +148,26 @@ export function SettingsScreen() {
   }, [])
 
   const handleSaveBusinessDay = useCallback(() => {
+    // Optimistic local schedule for instant UI feedback — computed from this
+    // machine's clock/timezone, which can disagree by a few hours with the
+    // server's TIMEZONE_OFFSET-based computation. updateMe's response carries
+    // the server's authoritative pendingBusinessDayStartHour/effectiveFrom;
+    // reconciling with it below (instead of the old fire-and-forget) is what
+    // syncBusinessDayFromServer's own doc comment describes fixing elsewhere
+    // — this call site was the one still doing it the old way.
     scheduleBusinessDayStartHour(editingHour)
     setShowBusinessDay(false)
-    authApi.updateMe({ businessDayStartHour: editingHour }).catch((err: unknown) => {
-      showToast(err instanceof Error ? err.message : t('error'), 'error')
-    })
+    authApi.updateMe({ businessDayStartHour: editingHour })
+      .then(({ data }) => {
+        syncBusinessDayFromServer({
+          businessDayStartHour: data.businessDayStartHour,
+          pendingBusinessDayStartHour: data.pendingBusinessDayStartHour,
+          businessDayEffectiveFrom: data.businessDayEffectiveFrom,
+        })
+      })
+      .catch((err: unknown) => {
+        showToast(err instanceof Error ? err.message : t('error'), 'error')
+      })
   }, [editingHour, showToast])
 
   const focusBlockInput = useCallback(() => {
