@@ -100,8 +100,11 @@ const ENTITY_TO_KIND: Record<string, QueueKind> = {
 }
 
 /**
- * Splits one kind's sent localIds into those to remove from the queue
+ * Splits one kind's sent items into those to remove from the queue
  * (accepted, plus rejected-for-good) and those to keep for a later retry.
+ * Returns `(localId, updatedAt)` pairs (not bare ids) for `remove` so the
+ * caller can hand removeSynced() the exact version that was confirmed — see
+ * removeSynced()'s doc comment for why a bare id isn't enough.
  *
  * Rejections are matched per entity kind rather than through one flat set of
  * localIds: an inventory entry's localId is `${date}-${productLocalId}`, so a
@@ -110,9 +113,9 @@ const ENTITY_TO_KIND: Record<string, QueueKind> = {
  */
 function partitionQueueIds(
   kind: QueueKind,
-  sentLocalIds: string[],
+  sentItems: { localId: string; updatedAt: string }[],
   rejected: SyncRejectedItem[],
-): { remove: string[]; retryCount: number } {
+): { remove: { localId: string; updatedAt: string }[]; retryCount: number } {
   const rejectedForKind = new Map<string, string>()
   for (const item of rejected) {
     if (ENTITY_TO_KIND[item.entity] === kind) {
@@ -120,12 +123,12 @@ function partitionQueueIds(
     }
   }
 
-  const remove: string[] = []
+  const remove: { localId: string; updatedAt: string }[] = []
   let retryCount = 0
-  for (const id of sentLocalIds) {
-    const reason = rejectedForKind.get(id)
+  for (const item of sentItems) {
+    const reason = rejectedForKind.get(item.localId)
     if (reason === undefined || TERMINAL_REJECT_REASONS.has(reason)) {
-      remove.push(id)
+      remove.push({ localId: item.localId, updatedAt: item.updatedAt })
     } else {
       retryCount += 1
     }
@@ -184,11 +187,7 @@ async function performSync(): Promise<SyncResult> {
       ['daily', queue.daily],
     ] as const) {
       if (items.length === 0) continue
-      const { remove, retryCount } = partitionQueueIds(
-        kind,
-        items.map((item) => item.localId),
-        data.rejected,
-      )
+      const { remove, retryCount } = partitionQueueIds(kind, items, data.rejected)
       removeSynced(kind, remove)
       retryTotal += retryCount
     }

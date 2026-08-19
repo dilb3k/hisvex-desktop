@@ -143,14 +143,31 @@ export function getQueueSnapshot(): QueueSnapshot {
   }
 }
 
-/** Drops successfully-synced items (by localId) for the given kind. */
-export function removeSynced(kind: QueueKind, localIds: string[]): void {
-  if (localIds.length === 0) return
+/**
+ * Drops successfully-synced items for the given kind — but only the exact
+ * version that was actually sent and accepted, identified by
+ * `(localId, updatedAt)`.
+ *
+ * Why not just delete by localId: a sync cycle snapshots the queue, then
+ * awaits the network round-trip. If the same product/entry is mutated again
+ * locally (e.g. a second offline sale for the same product) while that
+ * request is in flight, enqueue() overwrites the queue entry in place with
+ * the newer data — same localId, new updatedAt. A blind delete-by-localId
+ * here would then discard that newer, never-sent mutation, silently
+ * dropping it from both the local queue and the server (it was never in the
+ * payload that got accepted). Comparing updatedAt ensures we only ever
+ * remove the precise version the server actually confirmed; a superseded
+ * entry is left in place and simply gets picked up by the next sync cycle
+ * (safe to resend — these are absolute snapshots, not deltas).
+ */
+export function removeSynced(kind: QueueKind, items: { localId: string; updatedAt: string }[]): void {
+  if (items.length === 0) return
   const bucket = state[kind] as Record<string, QueuedItemBase>
   let changed = false
-  for (const id of localIds) {
-    if (id in bucket) {
-      delete bucket[id]
+  for (const { localId, updatedAt } of items) {
+    const current = bucket[localId]
+    if (current && current.updatedAt === updatedAt) {
+      delete bucket[localId]
       changed = true
     }
   }
