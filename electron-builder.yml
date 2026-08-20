@@ -44,7 +44,13 @@ mac:
   artifactName: "${productName}-${version}-${arch}.${ext}"
 
 dmg:
-  title: "${productName} ${version}"
+  # ${arch} is required in the volume title — building x64 and arm64 DMGs in
+  # the same run mounts two volumes; without ${arch} both get the identical
+  # name "Hisvex ${version}", so the second `hdiutil detach` targets an
+  # ambiguous/already-detached volume and fails ("Above command failed,
+  # retrying 5 more times" -> exit 1), which is what's been failing this
+  # repo's mac CI job since v1.0.3.
+  title: "${productName} ${version} ${arch}"
   icon: build/icon.png
   contents:
     - x: 130
