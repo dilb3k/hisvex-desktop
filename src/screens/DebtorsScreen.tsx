@@ -27,6 +27,7 @@ import {
   parseFormattedAmount,
 } from '../styles/shared'
 import { formatPhone, displayPhone, formatShortDate } from '../utils/formatters'
+import { isOnline, subscribeOnline } from '../utils/network'
 
 // KPI card — same icon-chip + label + tabular-nums value structural pattern
 // as ProductsScreen.tsx/InventoryScreen.tsx, replacing the old bespoke
@@ -210,10 +211,16 @@ export function DebtorsScreen() {
       const { data } = await debtorsApi.getAll()
       setDebtors(data)
     } catch {
-      // navigator.onLine (surfaced app-wide via useAppStore) distinguishes
-      // "no network at all" from a genuine fetch failure while online — the
-      // two get different banners below.
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      // isOnline() (utils/network.ts) distinguishes "no network at all" from
+      // a genuine fetch failure while online — the two get different banners
+      // below. Deliberately NOT raw navigator.onLine: on Windows that flag
+      // can get stuck stale (false after a real reconnect, e.g. Wi-Fi
+      // hand-off/VPN toggle/sleep-wake — see utils/network.ts's
+      // runHealthCheck comment), which pinned this screen on the offline
+      // banner with an empty list and no way to recover short of an app
+      // restart. isOnline() is backed by an active health-check against the
+      // backend instead, so it self-corrects.
+      if (!isOnline()) {
         setOffline(true)
       } else {
         setFetchError(true)
@@ -225,6 +232,17 @@ export function DebtorsScreen() {
 
   useEffect(() => {
     loadDebtors()
+  }, [loadDebtors])
+
+  // Self-heal once the backend becomes reachable again — without this, a
+  // debtor load that failed while offline sat on the empty list + offline
+  // banner indefinitely (no retry affordance is shown for that banner), so
+  // the screen looked permanently stuck until the user navigated away and
+  // back. Mirrors syncEngine.ts's offline->online auto-retry.
+  useEffect(() => {
+    return subscribeOnline((online) => {
+      if (online) loadDebtors()
+    })
   }, [loadDebtors])
 
   const filtered = useMemo(() => {
