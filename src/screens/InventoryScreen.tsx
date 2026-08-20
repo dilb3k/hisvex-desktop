@@ -115,6 +115,20 @@ function skeletonBlock(h: number, delay = 0): React.CSSProperties {
   return { ...s.skeletonBlock, height: h, animationDelay: `${delay}s` }
 }
 
+// Real-bug fix: this react-datepicker customInput used to be declared inline
+// inside InventoryScreen's function body, so it got recreated (and
+// remounted) on every render of the component — the exact bug already fixed
+// on LoginScreen's business-day-hour picker (see its comment). Hoisted to
+// module scope, same as StatisticsScreen's RangeButton, with the
+// render-dependent weekday text passed in as a prop instead of read from a
+// closure.
+const DateInput = forwardRef<HTMLDivElement, { value?: string; onClick?: () => void; weekday?: string }>(({ value, onClick, weekday }, ref) => (
+  <div ref={ref} onClick={onClick} style={s.dateDisplay}>
+    <span style={s.dateText}>{value}</span>
+    <span style={s.weekdayText}>{weekday}</span>
+  </div>
+))
+
 function ErrorBanner({ onRetry }: { onRetry: () => void }) {
   return (
     <div style={s.errorBanner} role="alert">
@@ -357,13 +371,6 @@ export function InventoryScreen() {
     return { prevSold: selectedEntry.sold, newSold, newRevenue, newProfit }
   }, [selectedEntry, currentQtyInput, isEditable, isOverCount])
 
-  const DateInput = forwardRef<HTMLDivElement, { value?: string; onClick?: () => void }>(({ value, onClick }, ref) => (
-    <div ref={ref} onClick={onClick} style={s.dateDisplay}>
-      <span style={s.dateText}>{value}</span>
-      <span style={s.weekdayText}>{dayjs(selectedDate).format('dddd')}</span>
-    </div>
-  ))
-
   const renderDateNav = () => (
     <div style={s.dateNav}>
       <button onClick={goToPrevDay} style={s.dateNavBtn} title="Oldingi kun" aria-label="Oldingi kun"><ChevronLeft size={18} /></button>
@@ -371,7 +378,7 @@ export function InventoryScreen() {
         selected={dayjs(selectedDate).toDate()}
         onChange={(date: Date | null) => { if (date) setSelectedDate(dayjs(date).format('YYYY-MM-DD')) }}
         dateFormat="DD MMM YYYY"
-        customInput={<DateInput />}
+        customInput={<DateInput weekday={dayjs(selectedDate).format('dddd')} />}
       />
       <button onClick={goToNextDay} style={s.dateNavBtn} title="Keyingi kun" aria-label="Keyingi kun"><ChevronRight size={18} /></button>
     </div>
