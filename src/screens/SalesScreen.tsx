@@ -431,8 +431,15 @@ export function SalesScreen() {
         </div>
       )}
 
+      {/* Real bug fix: when the inventory fetch itself fails, sellableItems
+          is empty too, so this section used to render "Sotish uchun
+          mahsulot yo'q" (no stock) directly underneath the ErrorBanner's
+          "couldn't load data, retry" — two contradictory messages at once.
+          Gate on !fetchError so only the retryable error shows, matching
+          the mutually-exclusive loading/error/empty pattern every other
+          screen (Products/Inventory/Debtors/Statistics) already follows. */}
       <div style={{ flex: 1, overflow: 'auto', marginBottom: 16 }}>
-        {showEmptyNoStock || showEmptyNotFound ? (
+        {fetchError ? null : showEmptyNoStock || showEmptyNotFound ? (
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -592,6 +599,7 @@ export function SalesScreen() {
                         <button
                           onClick={() => clearLine(item.productId)}
                           title={t('clearLine')}
+                          aria-label={t('clearLine')}
                           style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             width: 26, height: 26, borderRadius: 7, border: 'none',
