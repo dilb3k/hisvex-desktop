@@ -57,6 +57,8 @@ export const translations = {
     gotIt: 'Tushundim',
 
     // Navigation
+    sidebarExpand: 'Kengaytirish',
+    sidebarCollapse: 'Yig\'ish',
     dashboard: 'Asosiy',
     products: 'Mahsulotlar',
     inventory: 'Ombor',
@@ -470,6 +472,8 @@ export const translations = {
     gotIt: 'Понятно',
 
     // Navigation
+    sidebarExpand: 'Развернуть',
+    sidebarCollapse: 'Свернуть',
     dashboard: 'Главная',
     products: 'Товары',
     inventory: 'Склад',

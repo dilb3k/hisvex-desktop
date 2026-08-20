@@ -120,14 +120,14 @@ export function Sidebar() {
       }}>
         <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: 3, borderBottom: '1px solid var(--color-border)' }}>
           <button
-            onClick={() => setCollapsed(false)} style={iconBtn} title="Expand"
+            onClick={() => setCollapsed(false)} style={iconBtn} title={t('sidebarExpand')} aria-label={t('sidebarExpand')}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; e.currentTarget.style.color = 'var(--color-text)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-tertiary)' }}
           >
             <ChevronRight size={20} />
           </button>
           <button
-            onClick={handleRefresh} style={iconBtn} title={t('refresh')}
+            onClick={handleRefresh} style={iconBtn} title={t('refresh')} aria-label={t('refresh')}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; e.currentTarget.style.color = 'var(--color-text)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-tertiary)' }}
           >
@@ -144,6 +144,15 @@ export function Sidebar() {
               opacity: !online ? 0.6 : 1,
             }}
             title={
+              !online
+                ? t('syncOfflineTooltip')
+                : syncState === 'syncing'
+                  ? t('syncingNow')
+                  : pendingCount > 0
+                    ? t('syncPendingCount', { count: pendingCount })
+                    : t('syncAllSynced')
+            }
+            aria-label={
               !online
                 ? t('syncOfflineTooltip')
                 : syncState === 'syncing'
@@ -180,7 +189,7 @@ export function Sidebar() {
         </nav>
         <div style={{ padding: '8px', borderTop: '1px solid var(--color-border)' }}>
           <button
-            onClick={logout} style={{ ...iconBtn, color: 'var(--color-danger)' }} title={t('logout')}
+            onClick={logout} style={{ ...iconBtn, color: 'var(--color-danger)' }} title={t('logout')} aria-label={t('logout')}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-danger-soft)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
           >
@@ -208,14 +217,14 @@ export function Sidebar() {
           <span style={{ fontSize: 19, fontWeight: 700, color: 'var(--color-primary)' }}>Hisvex</span>
         </div>
         <button
-          onClick={handleRefresh} style={{ ...iconBtn, width: 36, height: 36 }} title={t('refresh')}
+          onClick={handleRefresh} style={{ ...iconBtn, width: 36, height: 36 }} title={t('refresh')} aria-label={t('refresh')}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; e.currentTarget.style.color = 'var(--color-text)' }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-tertiary)' }}
         >
           <RefreshCw size={18} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
         </button>
         <button
-          onClick={() => setCollapsed(true)} style={{ ...iconBtn, width: 36, height: 36 }} title="Collapse"
+          onClick={() => setCollapsed(true)} style={{ ...iconBtn, width: 36, height: 36 }} title={t('sidebarCollapse')} aria-label={t('sidebarCollapse')}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; e.currentTarget.style.color = 'var(--color-text)' }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--color-text-tertiary)' }}
         >
@@ -271,6 +280,7 @@ export function Sidebar() {
               cursor: !online || syncState === 'syncing' ? 'default' : 'pointer',
             }}
             title={!online ? t('syncOfflineTooltip') : t('syncNow')}
+            aria-label={!online ? t('syncOfflineTooltip') : t('syncNow')}
           >
             <UploadCloud size={18} style={{ animation: syncState === 'syncing' ? 'spin 1s linear infinite' : 'none' }} />
           </button>
