@@ -302,10 +302,17 @@ const s = {
   },
   rangeBtnLabel: { fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 4 },
   rangeBtnValue: { fontSize: 14, fontWeight: 700, color: 'var(--color-text)' },
-  applyBtn: {
+  // Real bug fix: was a static object with a hardcoded `cursor: 'pointer'`,
+  // so the button kept showing a pointer cursor even while
+  // `disabled={allTimeLoading}` made it non-interactive. Now a function like
+  // this file's other conditional-style entries (periodTab,
+  // metricSwitchBtn), so disabled reads as not-allowed + dimmed, matching
+  // every other disabled button in the app.
+  applyBtn: (disabled?: boolean): React.CSSProperties => ({
     display: 'block' as const, margin: '0 20px 12px', padding: '12px 0', borderRadius: 8, border: 'none',
-    background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', width: 'calc(100% - 40px)',
-  },
+    background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 700,
+    cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1, width: 'calc(100% - 40px)',
+  }),
   statsGrid: { display: 'flex' as const, flexWrap: 'wrap' as const } as React.CSSProperties,
 
   // Error banner — mirrors AppLayout's global error-banner treatment
@@ -1036,7 +1043,7 @@ export function StatisticsScreen() {
               />
             </div>
 
-            <button style={s.applyBtn} onClick={handleAllTimeApply} disabled={allTimeLoading}>
+            <button style={s.applyBtn(allTimeLoading)} onClick={handleAllTimeApply} disabled={allTimeLoading}>
               {allTimeLoading ? (t('loading_data') || 'Yuklanmoqda...') : (t('applyRange'))}
             </button>
 

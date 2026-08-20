@@ -723,7 +723,16 @@ function DeleteConfirmModal({
           {t('deleteUserConfirm', { username: admin.username })}
         </p>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onClose} style={btnSecondaryStyle} disabled={deleting}>
+          {/* Real bug fix: disabled while `deleting` was in flight, but the
+              style never reflected it — cursor stayed 'pointer' and there was
+              no opacity change, so the button looked clickable while it
+              silently did nothing. Matches the Delete button's own
+              disabled-state styling right next to it. */}
+          <button
+            onClick={onClose}
+            style={{ ...btnSecondaryStyle, opacity: deleting ? 0.6 : 1, cursor: deleting ? 'not-allowed' : 'pointer' }}
+            disabled={deleting}
+          >
             {t('cancel')}
           </button>
           <button
