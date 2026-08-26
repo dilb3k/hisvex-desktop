@@ -30,7 +30,6 @@ import { isOnline, isNetworkError } from '../utils/network'
 import { enqueue, getQueueSnapshot, subscribe as subscribeQueue } from '../store/offlineQueue'
 import type { QueuedInventory } from '../store/offlineQueue'
 
-const parseWholeNumber = (val: string) => Number(val.replace(/\D/g, '')) || 0
 
 interface EnrichedItem {
   product: Product
