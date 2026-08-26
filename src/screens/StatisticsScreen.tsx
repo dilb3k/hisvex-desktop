@@ -11,10 +11,18 @@ import {
 import { t } from '../i18n'
 import { getBusinessDate } from '../utils/businessDay'
 import { formatMoney, spinner } from '../styles/shared'
-import { resolveSellPrice, resolveBuyPrice } from '../utils/inventory'
+import {
+  resolveSellPrice,
+  resolveBuyPrice,
+  normalizeUnit,
+  roundQty,
+  roundMoney,
+  formatQuantity,
+  formatQuantityValue,
+} from '../utils/inventory'
 import { StatBarChart, type ChartMetric, type ChartBucket } from '../components/StatBarChart'
 import { enumerateDays, enumerateMonths, buildDayBuckets, buildMonthBuckets } from '../utils/statsBuckets'
-import type { InventorySummary } from '../types'
+import type { InventorySummary, ProductUnit } from '../types'
 
 type Period = 'daily' | 'monthly' | 'yearly'
 
@@ -52,12 +60,13 @@ function navigateDate(period: Period, date: string, dir: -1 | 1) {
 interface ProductRankItem {
   id: string
   name: string
+  unit: ProductUnit
   sold: number
   profit: number
 }
 
 function buildProductRankings(inventoryItems: any[]): ProductRankItem[] {
-  const seen = new Map<string, { sold: number; profit: number; name: string }>()
+  const seen = new Map<string, { sold: number; profit: number; name: string; unit: ProductUnit }>()
 
   for (const item of inventoryItems) {
     const p = item.product
@@ -66,7 +75,12 @@ function buildProductRankings(inventoryItems: any[]): ProductRankItem[] {
     if (!id) continue
     const opening = item.startQuantity ?? item.openingQuantity ?? 0
     const sold = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
-    const cur = seen.get(id) ?? { sold: 0, profit: 0, name: p.name || 'Noma\'lum' }
+    const cur = seen.get(id) ?? {
+      sold: 0,
+      profit: 0,
+      name: p.name || 'Noma\'lum',
+      unit: normalizeUnit(item.unit ?? p.unit),
+    }
     cur.sold += sold
     const sp = resolveSellPrice(item, p)
     const bp = resolveBuyPrice(item, p)
@@ -77,8 +91,9 @@ function buildProductRankings(inventoryItems: any[]): ProductRankItem[] {
   return Array.from(seen.entries()).map(([id, totals]) => ({
     id,
     name: totals.name,
-    sold: totals.sold,
-    profit: totals.profit,
+    unit: totals.unit,
+    sold: roundQty(totals.sold),
+    profit: roundMoney(totals.profit),
   }))
 }
 
@@ -649,16 +664,18 @@ export function StatisticsScreen() {
       const name = p?.name || 'Noma\'lum'
       const buy = resolveBuyPrice(item, p)
       const sell = resolveSellPrice(item, p)
-      const opening = item.startQuantity ?? item.openingQuantity ?? 0
-      const remaining = Math.max(item.currentQuantity ?? 0, 0)
-      const sold = item.sold ?? Math.max(opening - remaining, 0)
+      const unit = normalizeUnit(item.unit ?? p?.unit)
+      const opening = roundQty(item.startQuantity ?? item.openingQuantity ?? 0)
+      const remaining = roundQty(Math.max(item.currentQuantity ?? 0, 0))
+      const sold = item.sold ?? roundQty(Math.max(opening - remaining, 0))
       const olinganSumma = opening * buy
       const umumiySumma = opening * sell
       const sotilganSumma = item.revenue ?? sold * sell
       const qoldiSumma = remaining * sell
       const foyda = (sell - buy) * opening
       rows.push([
-        String(idx), name, String(buy), String(sell), String(opening), String(remaining), String(sold),
+        String(idx), name, String(buy), String(sell),
+        formatQuantityValue(opening, unit), formatQuantityValue(remaining, unit), formatQuantityValue(sold, unit),
         String(olinganSumma), String(umumiySumma), String(sotilganSumma), String(qoldiSumma), String(foyda),
       ])
       totalSoni += opening
@@ -757,7 +774,7 @@ export function StatisticsScreen() {
           </div>
           <div style={s.rankMetrics}>
             <span style={{ ...s.rankSub, ...(unsold ? { color: 'var(--color-text-tertiary)' } : {}) } as React.CSSProperties}>
-              {unsold ? t('notSoldInPeriod') || 'Sotilmagan' : `${item.sold} dona`}
+              {unsold ? t('notSoldInPeriod') || 'Sotilmagan' : formatQuantity(item.sold, item.unit)}
             </span>
           </div>
           <div style={s.rankBarTrack}>

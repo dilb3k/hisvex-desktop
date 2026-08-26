@@ -2,7 +2,13 @@ import { create } from 'zustand'
 import type { DashboardData, DailySnapshot, Debtor, InventoryItem, InventorySummary, InventoryWithProduct, Product } from '../types'
 import { inventoryApi, productsApi, debtorsApi, snapshotsApi, clearApiCache } from '../api/client'
 import { getBusinessDate } from '../utils/businessDay'
-import { getInventoryTotals } from '../utils/inventory'
+import {
+  getInventoryTotals,
+  resolveSellPrice,
+  resolveBuyPrice,
+  roundQty,
+  roundMoney,
+} from '../utils/inventory'
 
 interface LoadingState {
   products: boolean
@@ -70,7 +76,7 @@ interface AppState {
   loadSnapshots: (from: string, to: string) => Promise<void>
   loadInventoryByDate: (date: string) => Promise<void>
   setSelectedDate: (date: string) => void
-  applyLocalSale: (date: string, lines: { productId: string; quantity: number }[]) => void
+  applyLocalSale: (date: string, lines: { productId: string; quantity: number; unitPrice?: number }[]) => void
   getInventoryTotals: () => { start: number; current: number; sold: number; revenue: number; profit: number; stockSellValue: number; stockBuyValue: number; stockProfit: number }
   setError: (error: string | null) => void
   clearError: () => void
@@ -193,7 +199,34 @@ export const useAppStore = create<AppState>((set, get) => ({
       const items = cached.items.map((item) => {
         const line = lines.find((l) => l.productId === item.productId)
         if (!line) return item
-        return { ...item, currentQuantity: Math.max(0, item.currentQuantity - line.quantity) }
+
+        // Mirrors the server's sales() (and SalesScreen's own offline entry
+        // build): a line sold off the list price moves into the locked
+        // accumulators at the price actually charged, with startQuantity
+        // falling in lockstep. Without this the cached "start" stayed at its
+        // pre-sale value and the Inventory screen showed a wrong opening
+        // figure until the next fetch.
+        const listPrice = resolveSellPrice(item, item.product)
+        const buyPrice = resolveBuyPrice(item, item.product)
+        const charged = line.unitPrice ?? listPrice
+        const offList = Math.abs(charged - listPrice) > 0.005
+        const newCurrent = roundQty(Math.max(0, item.currentQuantity - line.quantity))
+        const startQuantity = item.startQuantity ?? item.openingQuantity ?? item.currentQuantity
+
+        return {
+          ...item,
+          currentQuantity: newCurrent,
+          ...(offList
+            ? {
+                startQuantity: roundQty(Math.max(0, startQuantity - line.quantity)),
+                lockedSold: roundQty((item.lockedSold ?? 0) + line.quantity),
+                lockedRevenue: roundMoney((item.lockedRevenue ?? 0) + line.quantity * charged),
+                lockedProfit: roundMoney(
+                  (item.lockedProfit ?? 0) + line.quantity * (charged - buyPrice),
+                ),
+              }
+            : {}),
+        }
       })
       return {
         inventoryPerDateCache: {

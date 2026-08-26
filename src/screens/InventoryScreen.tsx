@@ -10,10 +10,22 @@ import {
 } from 'lucide-react'
 import { t } from '../i18n'
 import { PageHeader } from '../components/PageHeader'
-import type { Product, InventoryItem } from '../types'
+import type { Product, InventoryItem, ProductUnit } from '../types'
 import { formatMoney, overlay } from '../styles/shared'
 import { getBusinessDate } from '../utils/businessDay'
-import { resolveSellPrice, resolveBuyPrice, clampCurrentQuantity } from '../utils/inventory'
+import {
+  resolveSellPrice,
+  resolveBuyPrice,
+  clampCurrentQuantity,
+  normalizeUnit,
+  isWeighed,
+  roundQty,
+  roundMoney,
+  formatQuantity,
+  formatQuantityValue,
+  normalizeQuantityInput,
+  parseQuantityInput,
+} from '../utils/inventory'
 import { isOnline, isNetworkError } from '../utils/network'
 import { enqueue, getQueueSnapshot, subscribe as subscribeQueue } from '../store/offlineQueue'
 import type { QueuedInventory } from '../store/offlineQueue'
@@ -23,6 +35,7 @@ const parseWholeNumber = (val: string) => Number(val.replace(/\D/g, '')) || 0
 interface EnrichedItem {
   product: Product
   inv: InventoryItem | undefined
+  unit: ProductUnit
   opening: number
   current: number
   remaining: number
@@ -215,17 +228,18 @@ export function InventoryScreen() {
       if (!product) continue
       const sellPrice = resolveSellPrice(item, product)
       const buyPrice = resolveBuyPrice(item, product)
-      const opening = item.startQuantity ?? item.openingQuantity ?? 0
-      const current = item.currentQuantity ?? 0
-      const remaining = Math.max(current, 0)
-      const sold = item.sold ?? Math.max(opening - current, 0)
+      const unit = normalizeUnit(item.unit ?? product.unit)
+      const opening = roundQty(item.startQuantity ?? item.openingQuantity ?? 0)
+      const current = roundQty(item.currentQuantity ?? 0)
+      const remaining = roundQty(Math.max(current, 0))
+      const sold = item.sold ?? roundQty(Math.max(opening - current, 0))
       const revenue = item.revenue ?? (sold * sellPrice)
       const realizedProfit = item.realizedProfit ?? (sold * (sellPrice - buyPrice))
       const stockSellValue = remaining * sellPrice
       const unitProfit = sellPrice - buyPrice
       result.push({
         product: product as Product, inv: item,
-        opening, current, remaining, sold, revenue, realizedProfit,
+        unit, opening, current, remaining, sold, revenue, realizedProfit,
         stockSellValue, unitProfit, sellPrice, buyPrice,
       })
     }
@@ -252,13 +266,19 @@ export function InventoryScreen() {
       revenue += e.revenue
       profit += e.realizedProfit
     }
-    return { start, remaining, sold, revenue, profit }
+    return {
+      start: roundQty(start),
+      remaining: roundQty(remaining),
+      sold: roundQty(sold),
+      revenue: roundMoney(revenue),
+      profit: roundMoney(profit),
+    }
   }, [combinedData])
 
   const goToPrevDay = useCallback(() => setSelectedDate((prev) => dayjs(prev).subtract(1, 'day').format('YYYY-MM-DD')), [])
   const goToNextDay = useCallback(() => setSelectedDate((prev) => dayjs(prev).add(1, 'day').format('YYYY-MM-DD')), [])
 
-  const openModal = (entry: EnrichedItem) => { setSelectedEntry(entry); setCurrentQtyInput(String(entry.current)); setSaved(false) }
+  const openModal = (entry: EnrichedItem) => { setSelectedEntry(entry); setCurrentQtyInput(formatQuantityValue(entry.current, entry.unit)); setSaved(false) }
   const closeModal = () => { setSelectedEntry(null); setCurrentQtyInput('') }
 
   // Applies the edited current-quantity to local state, matching the same
@@ -277,15 +297,15 @@ export function InventoryScreen() {
       if (item.productId !== productId && item.product?._id !== productId) return item
       const opening = item.startQuantity ?? item.openingQuantity ?? 0
       const safeQty = clampCurrentQuantity(newQty, opening)
-      const newSold = Math.max(opening - safeQty, 0)
+      const newSold = roundQty(Math.max(opening - safeQty, 0))
       const sp = resolveSellPrice(item, item.product)
       const bp = resolveBuyPrice(item, item.product)
       return {
         ...item,
         currentQuantity: safeQty,
         sold: newSold,
-        revenue: newSold * sp,
-        realizedProfit: newSold * (sp - bp),
+        revenue: roundMoney(newSold * sp),
+        realizedProfit: roundMoney(newSold * (sp - bp)),
       }
     }))
   }, [])
@@ -323,12 +343,12 @@ export function InventoryScreen() {
   // derived "sold" at 0, hiding the problem). Now it's blocked inline
   // before save is ever attempted — mirrors mobile's
   // `cannotAddMoreThanSold` validation.
-  const rawQtyInput = selectedEntry ? parseWholeNumber(currentQtyInput) : 0
+  const rawQtyInput = selectedEntry ? parseQuantityInput(currentQtyInput, selectedEntry.unit) : 0
   const isOverCount = !!selectedEntry && isEditable && !isPastDate && rawQtyInput > selectedEntry.opening
 
   const handleSave = async () => {
     if (!selectedEntry || !isEditable) return
-    const rawQty = parseWholeNumber(currentQtyInput)
+    const rawQty = parseQuantityInput(currentQtyInput, selectedEntry.unit)
     // Block save outright when the typed value exceeds the opening
     // quantity — the inline error is already visible; this is the actual
     // gate that prevents the request from ever going out.
@@ -364,7 +384,7 @@ export function InventoryScreen() {
 
   const preview = useMemo(() => {
     if (!selectedEntry || !isEditable || isOverCount) return null
-    const newCurrent = parseWholeNumber(currentQtyInput)
+    const newCurrent = parseQuantityInput(currentQtyInput, selectedEntry.unit)
     const newSold = Math.max(selectedEntry.opening - newCurrent, 0)
     const newRevenue = newSold * selectedEntry.sellPrice
     const newProfit = newSold * (selectedEntry.sellPrice - selectedEntry.buyPrice)
@@ -388,8 +408,11 @@ export function InventoryScreen() {
     const negativeProfit = totals.profit < 0
     const kpiItems = [
       { icon: <Boxes size={17} />, label: t('start'), value: String(totals.start), color: 'var(--color-text)', bg: 'rgba(127,127,127,0.12)' },
-      { icon: <Package size={17} />, label: t('remaining'), value: String(totals.remaining), color: 'var(--color-text)', bg: 'rgba(127,127,127,0.12)' },
-      { icon: <ShoppingCart size={17} />, label: t('sold'), value: String(totals.sold), color: 'var(--color-metric-qty)', bg: 'var(--color-metric-qty-soft)' },
+      // No unit suffix on these: they sum across products measured in
+      // different units, so "24.5 dona" would be wrong. formatQuantityValue
+      // with 'kg' just means "keep the decimals, drop trailing zeros".
+      { icon: <Package size={17} />, label: t('remaining'), value: formatQuantityValue(totals.remaining, 'kg'), color: 'var(--color-text)', bg: 'rgba(127,127,127,0.12)' },
+      { icon: <ShoppingCart size={17} />, label: t('sold'), value: formatQuantityValue(totals.sold, 'kg'), color: 'var(--color-metric-qty)', bg: 'var(--color-metric-qty-soft)' },
       { icon: <Wallet size={17} />, label: t('revenue'), value: formatMoney(totals.revenue), color: 'var(--color-metric-revenue)', bg: 'var(--color-metric-revenue-soft)' },
       {
         icon: negativeProfit ? <TrendingDown size={17} /> : <TrendingUp size={17} />,
@@ -457,8 +480,8 @@ export function InventoryScreen() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           <div><div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{t('start')}</div><div style={{ fontSize: 15, fontWeight: 600 }}>{entry.opening}</div></div>
-          <div><div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{t('remaining')}</div><div style={{ fontSize: 15, fontWeight: 600 }}>{entry.remaining}</div></div>
-          <div><div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{t('sold')}</div><div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-success)' }}>{entry.sold}</div></div>
+          <div><div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{t('remaining')}</div><div style={{ fontSize: 15, fontWeight: 600 }}>{formatQuantity(entry.remaining, entry.unit)}</div></div>
+          <div><div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 2 }}>{t('sold')}</div><div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-success)' }}>{formatQuantity(entry.sold, entry.unit)}</div></div>
         </div>
       </div>
     )
@@ -491,21 +514,24 @@ export function InventoryScreen() {
 
           {isPastDate ? (
             <div>
-              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('start')}</span><span style={s.fieldValue}>{selectedEntry.opening}</span></div>
-              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('remaining')}</span><span style={s.fieldValue}>{selectedEntry.remaining}</span></div>
-              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('sold')}</span><span style={s.fieldValue}>{selectedEntry.sold}</span></div>
+              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('start')}</span><span style={s.fieldValue}>{formatQuantity(selectedEntry.opening, selectedEntry.unit)}</span></div>
+              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('remaining')}</span><span style={s.fieldValue}>{formatQuantity(selectedEntry.remaining, selectedEntry.unit)}</span></div>
+              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('sold')}</span><span style={s.fieldValue}>{formatQuantity(selectedEntry.sold, selectedEntry.unit)}</span></div>
             </div>
           ) : (
             <div>
-              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('start')}</span><span style={s.fieldValue}>{selectedEntry.opening}</span></div>
+              <div style={s.fieldRow}><span style={s.fieldLabel}>{t('start')}</span><span style={s.fieldValue}>{formatQuantity(selectedEntry.opening, selectedEntry.unit)}</span></div>
               {/* Explains why "start" is read-only here — ported from mobile,
                   which already has this hint. */}
               <p style={s.startHint}>{t('startQtyAuto')}</p>
               <div style={s.fieldRow}>
-                <span style={s.fieldLabel}>{t('remaining')}</span>
+                <span style={s.fieldLabel}>{t('remaining')} ({selectedEntry.unit})</span>
                 <input
-                  type="text" value={currentQtyInput} onChange={(e) => setCurrentQtyInput(e.target.value)}
-                  style={isOverCount ? s.modalInputError : s.modalInput} inputMode="numeric"
+                  type="text"
+                  value={currentQtyInput}
+                  onChange={(e) => setCurrentQtyInput(normalizeQuantityInput(e.target.value, selectedEntry.unit))}
+                  style={isOverCount ? s.modalInputError : s.modalInput}
+                  inputMode={isWeighed(selectedEntry.unit) ? 'decimal' : 'numeric'}
                   aria-invalid={isOverCount}
                 />
               </div>
@@ -515,8 +541,8 @@ export function InventoryScreen() {
               {p && (
                 <div style={s.previewBox}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginBottom: 8 }}>{t('preSaveCheck')}</div>
-                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('previousSold')}</span><span style={s.fieldValue}>{p.prevSold}</span></div>
-                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('newSold')}</span><span style={s.fieldValue}>{p.newSold}</span></div>
+                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('previousSold')}</span><span style={s.fieldValue}>{formatQuantity(p.prevSold, selectedEntry.unit)}</span></div>
+                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('newSold')}</span><span style={s.fieldValue}>{formatQuantity(p.newSold, selectedEntry.unit)}</span></div>
                   <div style={s.fieldRow}><span style={s.fieldLabel}>{t('expectedRevenue')}</span><span style={s.fieldValue}>{formatMoney(p.newRevenue)}</span></div>
                   <div style={s.fieldRow}><span style={s.fieldLabel}>{t('expectedProfit')}</span><span style={s.fieldValue}>{formatMoney(p.newProfit)}</span></div>
                 </div>

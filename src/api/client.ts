@@ -245,7 +245,12 @@ export const inventoryApi = {
   bulkUpdate: (items: { productId: string; currentQuantity: number; note?: string }[]) =>
     api.put('/inventory/bulk-current', { deviceId: getDeviceId(), date: getBusinessDate(), items }),
 
-  recordSales: (date: string, lines: { productId: string; quantity: number }[]) =>
+  /**
+   * `unitPrice` is the price actually charged per unit when it differs from
+   * the product's list price (a negotiated price, or the per-unit result of a
+   * cart discount). Omit it to charge the list price.
+   */
+  recordSales: (date: string, lines: { productId: string; quantity: number; unitPrice?: number }[]) =>
     api.post('/inventory/sales', { date, deviceId: getDeviceId(), lines }),
 }
 

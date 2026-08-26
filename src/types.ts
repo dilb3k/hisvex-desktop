@@ -36,18 +36,21 @@ export interface AuthPhoneVerification {
 
 export type AuthResponse = AuthSuccess | AuthPhoneVerification
 
+export type ProductUnit = 'dona' | 'kg'
+
 export interface Product {
   _id: string
   localId?: string
   name: string
   quantity?: number
+  /** Unit of measure — 'dona' is counted, 'kg' is weighed (fractions allowed). */
+  unit?: ProductUnit
   buyPrice?: number
   sellPrice?: number
   image?: string
   displayIndex?: number
   barcodes?: string[]
   category?: string
-  unit?: string
   costPrice?: number
   sellingPrice?: number
   imageHash?: string
@@ -59,6 +62,8 @@ export interface InventoryItem {
   _id: string
   productId: string
   product?: Product
+  /** Denormalized from the product so history stays readable after deletion. */
+  unit?: ProductUnit
   date: string
   startQuantity?: number
   currentQuantity: number
@@ -69,6 +74,16 @@ export interface InventoryItem {
   sold?: number
   revenue?: number
   realizedProfit?: number
+  /**
+   * Units already accounted for at a price other than the entry's list price
+   * (a negotiated sale, a mid-day price correction). They sit outside the
+   * `startQuantity - currentQuantity` derivation, which is why the day's true
+   * opening stock is `startQuantity + lockedSold`. See the backend's
+   * inventory.service.sales().
+   */
+  lockedRevenue?: number
+  lockedProfit?: number
+  lockedSold?: number
   createdAt?: string
   updatedAt?: string
 }
@@ -110,6 +125,7 @@ export interface DailySnapshot {
 export interface DailySnapshotItem {
   productId: string
   productName: string
+  unit?: ProductUnit
   sold: number
   buyPrice?: number
   sellPrice?: number

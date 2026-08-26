@@ -4,11 +4,28 @@ import { inventoryApi, resolveImageUrl, getDeviceId } from '../api/client'
 import { isOnline, isNetworkError } from '../utils/network'
 import { enqueue, getQueueSnapshot, subscribe as subscribeQueue } from '../store/offlineQueue'
 import type { QueuedInventory } from '../store/offlineQueue'
-import { Minus, Plus, Package, Scan, Search, ShoppingBag, X, Wallet, ShoppingCart, Trash2, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Minus, Plus, Package, Percent, Scan, Search, ShoppingBag, Tag, X, Wallet, ShoppingCart, Trash2, AlertTriangle, RefreshCw } from 'lucide-react'
 import { t } from '../i18n'
 import type { InventoryItem, Product } from '../types'
 import { getBusinessDate } from '../utils/businessDay'
-import { resolveSellPrice, formatMoney } from '../utils/inventory'
+import {
+  resolveSellPrice,
+  formatMoney,
+  normalizeUnit,
+  isWeighed,
+  stepFor,
+  roundQty,
+  roundMoney,
+  roundPrice,
+  qtyGreaterThan,
+  formatQuantity,
+  formatQuantityValue,
+  normalizeQuantityInput,
+  parseQuantityInput,
+} from '../utils/inventory'
+import { formatInputAmount, parseFormattedAmount } from '../styles/shared'
+
+type DiscountMode = 'none' | 'amount' | 'percent'
 
 // Loading skeleton — content-shaped placeholders (search bar + hint + card
 // list) instead of a bare spinner, matching the pattern already established
@@ -67,6 +84,16 @@ export function SalesScreen() {
 
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<Record<string, number>>({})
+  // Per-line negotiated unit price. Absent = charge the list price; the key is
+  // only ever written by an explicit edit, so clearing it restores the list
+  // price without having to remember what it was.
+  const [priceOverrides, setPriceOverrides] = useState<Record<string, number>>({})
+  // Raw text of a field while it's being typed, kept separate from the
+  // committed value so a half-typed "12" never becomes the charged price.
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({})
+  const [qtyDrafts, setQtyDrafts] = useState<Record<string, string>>({})
+  const [discountMode, setDiscountMode] = useState<DiscountMode>('none')
+  const [discountInput, setDiscountInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [showBarcode, setShowBarcode] = useState(false)
@@ -144,61 +171,164 @@ export function SalesScreen() {
 
   const cartArray = useMemo(() => {
     return Object.entries(cart)
-      .filter(([_, qty]) => qty > 0)
+      .filter(([, qty]) => qty > 0)
       .map(([productId, quantity]) => {
         const item = inventoryByProductId[productId]
         const product = item?.product || productMap[productId]
-        return { productId, quantity, product: product as Product | undefined, item }
+        const listPrice = resolveSellPrice(item || {}, product)
+        const unitPrice = priceOverrides[productId] ?? listPrice
+        return {
+          productId,
+          quantity,
+          product: product as Product | undefined,
+          item,
+          unit: normalizeUnit(item?.unit ?? product?.unit),
+          listPrice,
+          unitPrice,
+          lineTotal: roundMoney(quantity * unitPrice),
+        }
       })
-  }, [cart, inventoryByProductId, productMap])
+  }, [cart, inventoryByProductId, productMap, priceOverrides])
 
-  const totalRevenue = useMemo(() => {
-    return cartArray.reduce((sum, { quantity, product, item }) => {
-      const price = resolveSellPrice(item || {}, product)
-      return sum + quantity * price
-    }, 0)
-  }, [cartArray])
+  /**
+   * Money for this sale, in one place.
+   *
+   * A cart-level discount is spread across the lines in proportion to what
+   * each contributes, so it resolves back down to a per-unit price — the only
+   * thing the API accepts. That keeps one concept ("what was each unit
+   * actually sold for") on the wire instead of two, and makes the discount
+   * survive correctly when a product sells at several prices in one day.
+   */
+  const totals = useMemo(() => {
+    const subtotal = roundMoney(cartArray.reduce((sum, line) => sum + line.lineTotal, 0))
+    const raw = parseFormattedAmount(discountInput)
 
-  const totalPieces = useMemo(() => {
-    return cartArray.reduce((sum, { quantity }) => sum + quantity, 0)
-  }, [cartArray])
+    let requested = 0
+    if (discountMode === 'amount') requested = Math.min(raw, subtotal)
+    else if (discountMode === 'percent') requested = subtotal * (Math.min(raw, 100) / 100)
+    requested = Math.max(requested, 0)
 
-  const handleAdd = useCallback((productId: string, max: number) => {
+    const factor = subtotal > 0 ? (subtotal - requested) / subtotal : 1
+    const lines = cartArray.map(line => ({
+      ...line,
+      effectiveUnitPrice: roundPrice(line.unitPrice * factor),
+    }))
+
+    // The total is DERIVED from the per-unit prices actually sent, never from
+    // `subtotal - requested`. Computing it independently let the two drift:
+    // a 10 000 discount on 3 x 10 000 rounds each unit to 6 667, so the server
+    // records 20 001 while the screen said 20 000. The cashier must always see
+    // the number that will land in the report, so the requested discount bends
+    // by a so'm instead of the total lying.
+    const total = roundMoney(
+      lines.reduce((sum, line) => sum + roundMoney(line.quantity * line.effectiveUnitPrice), 0),
+    )
+
+    return {
+      subtotal,
+      discount: roundMoney(subtotal - total),
+      total,
+      lines,
+      // Line-level overrides count as a discount for display purposes too, so
+      // the summary reflects everything given away, not just the cart-level cut.
+      lineDiscount: roundMoney(
+        cartArray.reduce((sum, line) => sum + (line.listPrice - line.unitPrice) * line.quantity, 0),
+      ),
+    }
+  }, [cartArray, discountMode, discountInput])
+
+  const totalPieces = useMemo(
+    () => roundQty(cartArray.reduce((sum, { quantity }) => sum + quantity, 0)),
+    [cartArray],
+  )
+
+  // Dropping a line has to clear everything keyed off it, not just the
+  // quantity — otherwise re-adding the product would silently resurrect the
+  // previous negotiated price.
+  const forgetLine = useCallback((productId: string) => {
+    const drop = (prev: Record<string, unknown>) => {
+      const { [productId]: _removed, ...rest } = prev
+      return rest
+    }
+    setPriceOverrides(prev => drop(prev) as Record<string, number>)
+    setPriceDrafts(prev => drop(prev) as Record<string, string>)
+    setQtyDrafts(prev => drop(prev) as Record<string, string>)
+  }, [])
+
+  const setQuantity = useCallback((productId: string, next: number, max: number) => {
+    const clamped = roundQty(Math.max(next, 0))
+    if (qtyGreaterThan(clamped, max)) {
+      // Real-bug fix: tapping + at the stock limit used to just silently
+      // no-op (the button also disables, but a cashier tapping fast can
+      // easily miss that). Now it always gives explicit feedback.
+      showToast(t('maxStockReached'), 'error')
+      setCart(prev => ({ ...prev, [productId]: roundQty(max) }))
+      return
+    }
     setCart(prev => {
-      const current = prev[productId] || 0
-      if (current >= max) {
-        // Real-bug fix: tapping + at the stock limit used to just silently
-        // no-op (the button also disables, but a cashier tapping fast can
-        // easily miss that). Now it always gives explicit feedback.
-        showToast(t('maxStockReached'), 'error')
-        return prev
-      }
-      return { ...prev, [productId]: current + 1 }
-    })
-  }, [showToast])
-
-  const handleRemove = useCallback((productId: string) => {
-    setCart(prev => {
-      const current = prev[productId] || 0
-      if (current <= 1) {
-        const { [productId]: _, ...rest } = prev
+      if (clamped <= 0) {
+        const { [productId]: _removed, ...rest } = prev
         return rest
       }
-      return { ...prev, [productId]: current - 1 }
+      return { ...prev, [productId]: clamped }
     })
-  }, [])
+    if (clamped <= 0) forgetLine(productId)
+  }, [showToast, forgetLine])
+
+  const handleAdd = useCallback((productId: string, max: number, unit: string) => {
+    setQuantity(productId, (cart[productId] || 0) + stepFor(unit), max)
+  }, [cart, setQuantity])
+
+  const handleRemove = useCallback((productId: string, max: number, unit: string) => {
+    setQuantity(productId, (cart[productId] || 0) - stepFor(unit), max)
+  }, [cart, setQuantity])
 
   // One-tap reset of a single cart line to 0, instead of tapping "-"
   // repeatedly down to zero — a quick undo for an over-added line.
   const clearLine = useCallback((productId: string) => {
     setCart(prev => {
-      const { [productId]: _, ...rest } = prev
+      const { [productId]: _removed, ...rest } = prev
       return rest
     })
-  }, [])
+    forgetLine(productId)
+  }, [forgetLine])
 
   const clearCart = useCallback(() => {
     setCart({})
+    setPriceOverrides({})
+    setPriceDrafts({})
+    setQtyDrafts({})
+    setDiscountMode('none')
+    setDiscountInput('')
+  }, [])
+
+  const commitPrice = useCallback((productId: string, raw: string, listPrice: number) => {
+    const parsed = parseFormattedAmount(raw)
+    setPriceDrafts(prev => {
+      const { [productId]: _removed, ...rest } = prev
+      return rest
+    })
+    // Empty or unchanged means "no override" rather than "charge zero" — a
+    // cleared field should read as the list price, not as a giveaway.
+    if (!raw.trim() || parsed === listPrice) {
+      setPriceOverrides(prev => {
+        const { [productId]: _removed, ...rest } = prev
+        return rest
+      })
+      return
+    }
+    setPriceOverrides(prev => ({ ...prev, [productId]: roundMoney(Math.max(parsed, 0)) }))
+  }, [])
+
+  const resetPrice = useCallback((productId: string) => {
+    setPriceOverrides(prev => {
+      const { [productId]: _removed, ...rest } = prev
+      return rest
+    })
+    setPriceDrafts(prev => {
+      const { [productId]: _removed, ...rest } = prev
+      return rest
+    })
   }, [])
 
   const barcodeInputRef = useRef<HTMLInputElement>(null)
@@ -236,15 +366,16 @@ export function SalesScreen() {
     }
 
     const key = invItem.productId || product._id
+    const unit = normalizeUnit(invItem.unit ?? product.unit)
     const alreadyInCart = cart[key] || 0
-    if (alreadyInCart >= invItem.currentQuantity) {
+    if (!qtyGreaterThan(invItem.currentQuantity, alreadyInCart)) {
       setBarcodeError(t('maxStockReached'))
       setBarcodeInput('')
       barcodeInputRef.current?.focus()
       return
     }
 
-    setCart(prev => ({ ...prev, [key]: alreadyInCart + 1 }))
+    setCart(prev => ({ ...prev, [key]: roundQty((prev[key] || 0) + stepFor(unit)) }))
     setBarcodeInput('')
     setBarcodeError(null)
     showToast(product.name, 'success')
@@ -259,17 +390,43 @@ export function SalesScreen() {
   // This is the path that lets a cashier complete a sale with zero
   // connectivity: no network round-trip is required, only the client-side
   // stock checks already enforced by handleAdd/handleBarcodeSubmit above.
-  const recordSaleOffline = useCallback((lines: { productId: string; quantity: number }[], date: string) => {
+  const recordSaleOffline = useCallback((
+    lines: { productId: string; quantity: number; unitPrice?: number }[],
+    date: string,
+  ) => {
     const deviceId = getDeviceId()
     const updatedAt = new Date().toISOString()
 
     const updatedByProductId: Record<string, InventoryItem> = {}
-    for (const { productId, quantity } of lines) {
+    for (const { productId, quantity, unitPrice } of lines) {
       const existing = inventoryByProductId[productId]
       if (!existing) continue
+
+      const listPrice = resolveSellPrice(existing, existing.product)
+      const buyPrice = existing.buyPrice ?? existing.product?.buyPrice ?? 0
+      const charged = unitPrice ?? listPrice
+      const newCurrent = roundQty(Math.max(0, existing.currentQuantity - quantity))
+
+      // Mirrors the server's sales() exactly (see inventory.service.ts): a
+      // line sold off the list price moves into the locked accumulators at
+      // the price actually charged, with startQuantity falling in lockstep so
+      // the derived span keeps valuing only the list-price units. Doing the
+      // same math here means an offline discount syncs to the identical
+      // numbers the online path would have produced.
+      const offList = Math.abs(charged - listPrice) > 0.005
+      const startQuantity = existing.startQuantity ?? existing.openingQuantity ?? existing.currentQuantity
+
       updatedByProductId[productId] = {
         ...existing,
-        currentQuantity: Math.max(0, existing.currentQuantity - quantity),
+        currentQuantity: newCurrent,
+        ...(offList
+          ? {
+              startQuantity: roundQty(Math.max(0, startQuantity - quantity)),
+              lockedSold: roundQty((existing.lockedSold ?? 0) + quantity),
+              lockedRevenue: roundMoney((existing.lockedRevenue ?? 0) + quantity * charged),
+              lockedProfit: roundMoney((existing.lockedProfit ?? 0) + quantity * (charged - buyPrice)),
+            }
+          : {}),
       }
     }
 
@@ -293,7 +450,7 @@ export function SalesScreen() {
       enqueue('inventory', queuedItem)
     }
 
-    setCart({})
+    clearCart()
     // Unified with the online path: both now show the SAME inline banner
     // element (just different wording), instead of online=banner /
     // offline=toast — two different confirmation UIs made it impossible for
@@ -304,15 +461,19 @@ export function SalesScreen() {
     setTimeout(() => setSuccess(null), 4000)
     // Deliberately not calling syncEngine.syncNow() here — the background
     // engine from step 1 already syncs on reconnect and on its own interval.
-  }, [inventoryByProductId, applyLocalSale])
+  }, [inventoryByProductId, applyLocalSale, clearCart])
 
   const handleConfirmSale = useCallback(async () => {
     if (totalPieces === 0 || submitting) return
     setSubmitting(true)
     try {
-      const lines = cartArray.map(({ productId, quantity }) => ({
+      const lines = totals.lines.map(({ productId, quantity, effectiveUnitPrice, listPrice }) => ({
         productId,
         quantity,
+        // Only sent when it actually differs — an untouched line stays on the
+        // server's cheap list-price path instead of being routed through the
+        // locked-price accumulators for no reason.
+        ...(Math.abs(effectiveUnitPrice - listPrice) > 0.005 ? { unitPrice: effectiveUnitPrice } : {}),
       }))
       const today = getBusinessDate()
 
@@ -324,7 +485,7 @@ export function SalesScreen() {
       try {
         await inventoryApi.recordSales(today, lines)
         await loadInventory()
-        setCart({})
+        clearCart()
         setSuccess(t('salesSuccess'))
         setTimeout(() => setSuccess(null), 3000)
       } catch (err: unknown) {
@@ -339,7 +500,7 @@ export function SalesScreen() {
     } finally {
       setSubmitting(false)
     }
-  }, [cartArray, totalPieces, submitting, loadInventory, recordSaleOffline, showToast])
+  }, [totals, totalPieces, submitting, loadInventory, recordSaleOffline, showToast, clearCart])
 
   if (loading) {
     return (
@@ -351,6 +512,22 @@ export function SalesScreen() {
 
   const showEmptyNoStock = sellableItems.length === 0 && !search
   const showEmptyNotFound = sellableItems.length === 0 && search
+  const hasDiscount = totals.discount > 0 || Math.abs(totals.lineDiscount) > 0.005
+
+  const smallInput: React.CSSProperties = {
+    padding: '9px 11px',
+    borderRadius: 8,
+    border: '1px solid var(--color-border)',
+    background: 'var(--color-bg)',
+    color: 'var(--color-text)',
+    fontSize: 14.5,
+    fontWeight: 600,
+    fontFamily: 'inherit',
+    outline: 'none',
+    width: '100%',
+    boxSizing: 'border-box',
+    fontVariantNumeric: 'tabular-nums',
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -454,12 +631,18 @@ export function SalesScreen() {
             </p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {sellableItems.map(item => {
               const product = item.product as Product | undefined
               const cartQty = cart[item.productId] || 0
               const isActive = cartQty > 0
-              const price = resolveSellPrice(item, product)
+              const unit = normalizeUnit(item.unit ?? product?.unit)
+              const weighed = isWeighed(unit)
+              const listPrice = resolveSellPrice(item, product)
+              const overridden = priceOverrides[item.productId]
+              const price = overridden ?? listPrice
+              const isOverridden = overridden !== undefined
+              const canAdd = qtyGreaterThan(item.currentQuantity, cartQty)
 
               return (
                 <div
@@ -471,11 +654,11 @@ export function SalesScreen() {
                     overflow: 'hidden',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '18px 20px' }}>
                     <div style={{
-                      width: 58,
-                      height: 58,
-                      borderRadius: 10,
+                      width: 76,
+                      height: 76,
+                      borderRadius: 12,
                       background: 'var(--color-bg)',
                       display: 'flex',
                       alignItems: 'center',
@@ -490,16 +673,16 @@ export function SalesScreen() {
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         />
                       ) : (
-                        <Package size={26} style={{ color: 'var(--color-text-secondary)', opacity: 0.5 }} />
+                        <Package size={30} style={{ color: 'var(--color-text-secondary)', opacity: 0.5 }} />
                       )}
                     </div>
 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{
-                        fontSize: 16,
-                        fontWeight: 600,
+                        fontSize: 18,
+                        fontWeight: 700,
                         color: 'var(--color-text)',
-                        marginBottom: 3,
+                        marginBottom: 4,
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
@@ -514,17 +697,27 @@ export function SalesScreen() {
                           }} />
                         )}
                       </p>
-                      <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 1 }}>
-                        {t('sellPrice')}: <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{formatMoney(price)}</span>
+                      <p style={{ fontSize: 14.5, color: 'var(--color-text-secondary)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span>{t('sellPrice')}: <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{formatMoney(price)}</span></span>
+                        {isOverridden && (
+                          <span style={{ textDecoration: 'line-through', opacity: 0.65, fontSize: 13 }}>
+                            {formatMoney(listPrice)}
+                          </span>
+                        )}
                       </p>
-                      <p style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
-                        {t('remaining')}: {item.currentQuantity}
+                      <p style={{ fontSize: 14.5, color: 'var(--color-text-secondary)' }}>
+                        {/* Live-adjusted stock: subtract what's already in the
+                            cart for this sale so the shown "qoldiq" reflects
+                            what will actually remain after checkout (e.g.
+                            22 in stock, 2 in cart → shows 20), instead of the
+                            unchanging server-side currentQuantity. */}
+                        {t('remaining')}: {formatQuantity(roundQty(item.currentQuantity - cartQty), unit)}
                       </p>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <button
-                        onClick={() => handleRemove(item.productId)}
+                        onClick={() => handleRemove(item.productId, item.currentQuantity, unit)}
                         disabled={cartQty === 0}
                         title="Kamaytirish"
                         aria-label="Kamaytirish"
@@ -532,9 +725,9 @@ export function SalesScreen() {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          width: 38,
-                          height: 38,
-                          borderRadius: 9,
+                          width: 46,
+                          height: 46,
+                          borderRadius: 10,
                           border: `1px solid ${cartQty > 0 ? 'var(--color-primary)' : 'var(--color-border)'}`,
                           background: cartQty > 0 ? 'var(--color-primary-soft)' : 'transparent',
                           color: cartQty > 0 ? 'var(--color-primary)' : 'var(--color-text-secondary)',
@@ -543,57 +736,138 @@ export function SalesScreen() {
                           transition: 'all 0.15s',
                         }}
                       >
-                        <Minus size={18} />
+                        <Minus size={20} />
                       </button>
-                      <span style={{
-                        fontSize: 18,
-                        fontWeight: 700,
-                        color: 'var(--color-text)',
-                        minWidth: 30,
-                        textAlign: 'center',
-                        fontVariantNumeric: 'tabular-nums',
-                      }}>
-                        {cartQty}
-                      </span>
+                      {/* Weighed goods get a real input instead of only a
+                          stepper: reaching 1.75 kg by tapping +0.1 seventeen
+                          times is not a checkout flow. Counted goods keep the
+                          read-only badge, where the stepper is the fast path. */}
+                      {weighed ? (
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          aria-label={t('quantity')}
+                          value={qtyDrafts[item.productId] ?? (cartQty > 0 ? formatQuantityValue(cartQty, unit) : '')}
+                          placeholder="0"
+                          onChange={(e) => setQtyDrafts(prev => ({
+                            ...prev,
+                            [item.productId]: normalizeQuantityInput(e.target.value, unit),
+                          }))}
+                          onBlur={(e) => {
+                            const raw = e.target.value
+                            setQtyDrafts(prev => {
+                              const { [item.productId]: _removed, ...rest } = prev
+                              return rest
+                            })
+                            setQuantity(item.productId, parseQuantityInput(raw, unit), item.currentQuantity)
+                          }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                          style={{
+                            width: 74,
+                            textAlign: 'center',
+                            padding: '11px 4px',
+                            borderRadius: 9,
+                            border: '1px solid var(--color-border)',
+                            background: 'var(--color-bg)',
+                            color: 'var(--color-text)',
+                            fontSize: 17,
+                            fontWeight: 700,
+                            fontFamily: 'inherit',
+                            outline: 'none',
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        />
+                      ) : (
+                        <span style={{
+                          fontSize: 19,
+                          fontWeight: 700,
+                          color: 'var(--color-text)',
+                          minWidth: 32,
+                          textAlign: 'center',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}>
+                          {cartQty}
+                        </span>
+                      )}
                       <button
-                        onClick={() => handleAdd(item.productId, item.currentQuantity)}
+                        onClick={() => handleAdd(item.productId, item.currentQuantity, unit)}
                         title="Ko'paytirish"
                         aria-label="Ko'paytirish"
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          width: 38,
-                          height: 38,
-                          borderRadius: 9,
-                          border: `1px solid ${cartQty < item.currentQuantity ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                          background: cartQty < item.currentQuantity ? 'var(--color-primary-soft)' : 'transparent',
-                          color: cartQty < item.currentQuantity ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                          cursor: cartQty >= item.currentQuantity ? 'not-allowed' : 'pointer',
-                          opacity: cartQty >= item.currentQuantity ? 0.5 : 1,
+                          width: 46,
+                          height: 46,
+                          borderRadius: 10,
+                          border: `1px solid ${canAdd ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                          background: canAdd ? 'var(--color-primary-soft)' : 'transparent',
+                          color: canAdd ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                          cursor: canAdd ? 'pointer' : 'not-allowed',
+                          opacity: canAdd ? 1 : 0.5,
                           transition: 'all 0.15s',
                         }}
                       >
-                        <Plus size={18} />
+                        <Plus size={20} />
                       </button>
                     </div>
                   </div>
 
                   {isActive && (
                     <div style={{
-                      padding: '8px 12px 8px 16px',
+                      padding: '10px 14px',
                       borderTop: '1px solid var(--color-border)',
                       background: 'var(--color-primary-soft)',
                       display: 'flex',
-                      justifyContent: 'space-between',
                       alignItems: 'center',
-                      fontSize: 14,
-                      color: 'var(--color-primary)',
-                      fontWeight: 600,
+                      gap: 10,
+                      flexWrap: 'wrap',
                     }}>
-                      <span>{t('saleTotal')}:</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span>{formatMoney(cartQty * price)}</span>
+                      {/* Per-line price edit — the customer who negotiates a
+                          different price for one item is the common case; a
+                          cart-wide discount is the separate control below. */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 200px', minWidth: 180 }}>
+                        <Tag size={16} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          aria-label={t('editPrice')}
+                          value={priceDrafts[item.productId] ?? formatInputAmount(String(price))}
+                          onChange={(e) => setPriceDrafts(prev => ({
+                            ...prev,
+                            [item.productId]: formatInputAmount(e.target.value),
+                          }))}
+                          onBlur={(e) => commitPrice(item.productId, e.target.value, listPrice)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                          style={{
+                            ...smallInput,
+                            flex: 1,
+                            borderColor: isOverridden ? 'var(--color-primary)' : 'var(--color-border)',
+                            color: isOverridden ? 'var(--color-primary)' : 'var(--color-text)',
+                          }}
+                        />
+                        {isOverridden && (
+                          <button
+                            onClick={() => resetPrice(item.productId)}
+                            title={t('resetPrice')}
+                            aria-label={t('resetPrice')}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              width: 30, height: 30, borderRadius: 7, border: 'none',
+                              background: 'transparent', color: 'var(--color-text-secondary)',
+                              cursor: 'pointer', flexShrink: 0,
+                            }}
+                          >
+                            <X size={15} />
+                          </button>
+                        )}
+                      </div>
+
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto',
+                        fontSize: 15, fontWeight: 700, color: 'var(--color-primary)',
+                      }}>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatMoney(roundMoney(cartQty * price))}</span>
                         {/* One-tap line reset — avoids tapping "-" repeatedly
                             down to zero to undo an over-added line. */}
                         <button
@@ -602,7 +876,7 @@ export function SalesScreen() {
                           aria-label={t('clearLine')}
                           style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            width: 26, height: 26, borderRadius: 7, border: 'none',
+                            width: 28, height: 28, borderRadius: 7, border: 'none',
                             background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer',
                           }}
                         >
@@ -712,6 +986,57 @@ export function SalesScreen() {
         borderRadius: '12px 12px 0 0',
         padding: '12px 16px',
       }}>
+        {/* Cart-wide discount. Kept out of the way until there is something
+            to discount, so the default checkout is still two clicks. */}
+        {totalPieces > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            <span style={{
+              fontSize: 12.5, fontWeight: 600, color: 'var(--color-text-secondary)',
+              display: 'flex', alignItems: 'center', gap: 5,
+            }}>
+              <Percent size={14} />
+              {t('discount')}
+            </span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {(['none', 'amount', 'percent'] as DiscountMode[]).map((mode) => {
+                const active = discountMode === mode
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => { setDiscountMode(mode); if (mode === 'none') setDiscountInput('') }}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 7,
+                      border: `1px solid ${active ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                      background: active ? 'var(--color-primary-soft)' : 'transparent',
+                      color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                      fontSize: 12.5,
+                      fontWeight: active ? 700 : 500,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {mode === 'none' ? t('noDiscount') : mode === 'amount' ? "so'm" : '%'}
+                  </button>
+                )
+              })}
+            </div>
+            {discountMode !== 'none' && (
+              <input
+                type="text"
+                inputMode="numeric"
+                autoFocus
+                aria-label={discountMode === 'percent' ? t('discountPercent') : t('discountAmount')}
+                placeholder={discountMode === 'percent' ? '10' : '5 000'}
+                value={discountInput}
+                onChange={(e) => setDiscountInput(formatInputAmount(e.target.value))}
+                style={{ ...smallInput, flex: '1 1 120px', maxWidth: 170 }}
+              />
+            )}
+          </div>
+        )}
+
         {/* Running-total KPI chips — same icon-chip + label + tabular-nums
             value pattern, and the same --color-metric-revenue/qty identity
             colors, as the redesigned Statistics/Inventory screens. Replaces
@@ -733,7 +1058,20 @@ export function SalesScreen() {
               <div style={{
                 fontSize: 19, fontWeight: 800, color: 'var(--color-metric-revenue)',
                 fontVariantNumeric: 'tabular-nums', letterSpacing: -0.3,
-              }}>{formatMoney(totalRevenue)}</div>
+              }}>{formatMoney(totals.total)}</div>
+              {/* Only shown when money was actually given away, so the normal
+                  sale keeps a single clean number. */}
+              {hasDiscount && (
+                <div style={{ fontSize: 11.5, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                  <span style={{ textDecoration: 'line-through', opacity: 0.7 }}>
+                    {formatMoney(roundMoney(totals.subtotal + totals.lineDiscount))}
+                  </span>
+                  {' · '}
+                  <span style={{ color: 'var(--color-danger)' }}>
+                    −{formatMoney(roundMoney(totals.discount + totals.lineDiscount))}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
           <div style={{
@@ -750,7 +1088,7 @@ export function SalesScreen() {
               <div style={{
                 fontSize: 19, fontWeight: 800, color: 'var(--color-metric-qty)',
                 fontVariantNumeric: 'tabular-nums',
-              }}>{totalPieces}</div>
+              }}>{formatQuantityValue(totalPieces, 'kg')}</div>
             </div>
           </div>
         </div>

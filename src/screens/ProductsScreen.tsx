@@ -5,8 +5,20 @@ import { productsApi, resolveImageUrl, getDeviceId, clearApiCache } from '../api
 import { Package, Plus, Search, Pencil, Lock, AlertTriangle, Trash2, X, Wallet, RefreshCw } from 'lucide-react'
 import { t } from '../i18n'
 import { PageHeader } from '../components/PageHeader'
-import type { Product } from '../types'
-import { resolveSellPrice, resolveBuyPrice } from '../utils/inventory'
+import type { Product, ProductUnit } from '../types'
+import {
+  resolveSellPrice,
+  resolveBuyPrice,
+  DEFAULT_UNIT,
+  PRODUCT_UNITS,
+  normalizeUnit,
+  normalizeQuantityInput,
+  parseQuantityInput,
+  formatQuantity,
+  formatQuantityValue,
+  isWeighed,
+  roundQty,
+} from '../utils/inventory'
 import { isBlockCodeDisabled } from '../utils/blockCode'
 import { isOnline, isNetworkError } from '../utils/network'
 import { enqueue, getQueueSnapshot, subscribe as subscribeQueue } from '../store/offlineQueue'
@@ -37,7 +49,7 @@ interface ValidationErrors {
   quantity: string
 }
 
-const validateProductInput = (input: { name: string; quantity: number; buyPrice: number; sellPrice: number }): ValidationErrors => {
+const validateProductInput = (input: { name: string; quantity: number; buyPrice: number; sellPrice: number; unit: ProductUnit }): ValidationErrors => {
   const errors: ValidationErrors = { name: '', buyPrice: '', sellPrice: '', quantity: '' }
   if (!input.name || input.name.trim().length === 0) {
     errors.name = 'Mahsulot nomi majburiy'
@@ -54,6 +66,8 @@ const validateProductInput = (input: { name: string; quantity: number; buyPrice:
   }
   if (input.quantity < 0) {
     errors.quantity = 'Miqdor manfiy bo\'lmasligi kerak'
+  } else if (input.unit === 'dona' && !Number.isInteger(input.quantity)) {
+    errors.quantity = 'Dona bilan o\'lchanadigan mahsulot butun son bo\'lishi kerak'
   }
   return errors
 }
@@ -63,6 +77,7 @@ const hasValidationErrors = (errors: ValidationErrors) => Object.values(errors).
 interface ProductForm {
   name: string
   quantity: string
+  unit: ProductUnit
   buyPrice: string
   sellPrice: string
   image: string | undefined
@@ -72,6 +87,7 @@ interface ProductForm {
 const EMPTY_FORM: ProductForm = {
   name: '',
   quantity: '',
+  unit: DEFAULT_UNIT,
   buyPrice: '',
   sellPrice: '',
   image: undefined,
@@ -267,7 +283,7 @@ export function ProductsScreen() {
     return { totalSkus: products.length, lowStock, value }
   }, [products])
 
-  const previewQty = Number(form.quantity || 0)
+  const previewQty = parseQuantityInput(form.quantity, form.unit)
   const previewBuy = parseFormattedAmount(form.buyPrice)
   const previewSell = parseFormattedAmount(form.sellPrice)
   const previewTotalCost = previewQty * previewBuy
@@ -298,7 +314,10 @@ export function ProductsScreen() {
     setBarcodeError('')
     setForm({
       name: item.name,
-      quantity: String(item.quantity ?? ''),
+      quantity: item.quantity === undefined || item.quantity === null
+        ? ''
+        : formatQuantityValue(item.quantity, item.unit),
+      unit: normalizeUnit(item.unit),
       buyPrice: item.buyPrice ? formatInputAmount(String(item.buyPrice)) : '',
       sellPrice: item.sellPrice ? formatInputAmount(String(item.sellPrice)) : '',
       image: item.image || item.imageHash,
@@ -355,7 +374,8 @@ export function ProductsScreen() {
   const validate = () => {
     const next = validateProductInput({
       name: form.name.trim(),
-      quantity: Number(form.quantity || 0),
+      quantity: parseQuantityInput(form.quantity, form.unit),
+      unit: form.unit,
       buyPrice: parseFormattedAmount(form.buyPrice),
       sellPrice: parseFormattedAmount(form.sellPrice),
     })
@@ -387,7 +407,8 @@ export function ProductsScreen() {
       _id: editingProduct?._id ?? localId,
       localId,
       name: form.name.trim(),
-      quantity: Number(form.quantity || 0),
+      quantity: parseQuantityInput(form.quantity, form.unit),
+      unit: form.unit,
       buyPrice: parseFormattedAmount(form.buyPrice),
       sellPrice: parseFormattedAmount(form.sellPrice),
       barcodes,
@@ -435,7 +456,8 @@ export function ProductsScreen() {
     }
     const payload: Record<string, unknown> = {
       name: form.name.trim(),
-      quantity: Number(form.quantity || 0),
+      quantity: parseQuantityInput(form.quantity, form.unit),
+      unit: form.unit,
       buyPrice: parseFormattedAmount(form.buyPrice),
       sellPrice: parseFormattedAmount(form.sellPrice),
       barcodes,
@@ -516,7 +538,7 @@ export function ProductsScreen() {
     const localId = restockProduct.localId ?? restockProduct._id
     const updated: Product = {
       ...restockProduct,
-      quantity: (restockProduct.quantity ?? 0) + qtyToAdd,
+      quantity: roundQty((restockProduct.quantity ?? 0) + qtyToAdd),
       localId,
       updatedAt: now,
     }
@@ -542,8 +564,8 @@ export function ProductsScreen() {
 
   const handleRestock = async () => {
     if (!restockProduct || !restockQty) return
-    const qtyToAdd = parseInt(restockQty.replace(/\D/g, ''), 10)
-    if (Number.isNaN(qtyToAdd) || qtyToAdd <= 0) { showToast('To\'g\'ri miqdor kiriting', 'error'); return }
+    const qtyToAdd = parseQuantityInput(restockQty, restockProduct.unit)
+    if (!Number.isFinite(qtyToAdd) || qtyToAdd <= 0) { showToast('To\'g\'ri miqdor kiriting', 'error'); return }
 
     if (!isOnline()) {
       restockProductOffline(qtyToAdd)
@@ -764,7 +786,7 @@ export function ProductsScreen() {
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 3 }}>
                       {item.displayIndex && item.displayIndex > 0 ? `#${item.displayIndex} · ` : ''}
-                      {t('currentQuantity')}: {item.quantity ?? 0}
+                      {t('currentQuantity')}: {formatQuantity(item.quantity ?? 0, item.unit)}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
                       <div style={{ width: 8, height: 8, borderRadius: '50%', background: status.color, flexShrink: 0 }} />
@@ -923,13 +945,57 @@ export function ProductsScreen() {
                 {formErrors.sellPrice && <div style={errorText}>{formErrors.sellPrice}</div>}
               </div>
 
+              {/* Unit first, then quantity: the unit decides what the quantity
+                  field will even accept (whole pieces vs. fractional kg), so
+                  it has to be the choice the user makes first. Switching to
+                  "dona" re-sanitizes whatever is already typed rather than
+                  leaving an impossible "2.5 dona" sitting in the field. */}
               <div style={{ marginBottom: 14 }}>
-                <label style={label}>{t('quantity')}</label>
+                <label style={label}>{t('unit')}</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {PRODUCT_UNITS.map((option) => {
+                    const active = form.unit === option
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => {
+                          setForm((prev) => ({
+                            ...prev,
+                            unit: option,
+                            quantity: normalizeQuantityInput(prev.quantity, option),
+                          }))
+                          setFormErrors((prev) => ({ ...prev, quantity: '' }))
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '10px 12px',
+                          borderRadius: 8,
+                          border: `1px solid ${active ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                          background: active ? 'var(--color-primary-soft)' : 'transparent',
+                          color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                          fontSize: 14,
+                          fontWeight: active ? 700 : 500,
+                          fontFamily: 'inherit',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        {t(option === 'kg' ? 'unitKg' : 'unitPiece')}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={label}>{t('quantity')} ({form.unit})</label>
                 <input
                   type="text"
-                  placeholder={t('quantityPlaceholder')}
+                  inputMode={isWeighed(form.unit) ? 'decimal' : 'numeric'}
+                  placeholder={isWeighed(form.unit) ? '0.5' : t('quantityPlaceholder')}
                   value={form.quantity}
-                  onChange={(e) => { setForm((prev) => ({ ...prev, quantity: normalizeDigits(e.target.value) })); setFormErrors((prev) => ({ ...prev, quantity: '' })) }}
+                  onChange={(e) => { setForm((prev) => ({ ...prev, quantity: normalizeQuantityInput(e.target.value, prev.unit) })); setFormErrors((prev) => ({ ...prev, quantity: '' })) }}
                   style={formErrors.quantity ? inputErrorStyle : inputBase}
                 />
                 {formErrors.quantity && <div style={errorText}>{formErrors.quantity}</div>}
@@ -938,6 +1004,7 @@ export function ProductsScreen() {
                     opening quantity, so the "today's opening stock" framing
                     would be misleading there. */}
                 {!editingProduct && <div style={hintText}>{t('openingQtyHint')}</div>}
+                {isWeighed(form.unit) && <div style={hintText}>{t('kgDecimalHint')}</div>}
               </div>
 
               {(previewQty > 0 || previewBuy > 0 || previewSell > 0) && (
@@ -1175,7 +1242,7 @@ export function ProductsScreen() {
                     {t('buy')}: {formatMoney(resolveBuyPrice(restockProduct, restockProduct))} | {t('sell')}: {formatMoney(resolveSellPrice(restockProduct, restockProduct))}
                   </div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginTop: 4 }}>
-                    {t('currentStock')}: <span style={{ color: 'var(--color-primary)' }}>{restockProduct.quantity ?? 0}</span>
+                    {t('currentStock')}: <span style={{ color: 'var(--color-primary)' }}>{formatQuantity(restockProduct.quantity ?? 0, restockProduct.unit)}</span>
                   </div>
                 </div>
               </div>
@@ -1185,7 +1252,8 @@ export function ProductsScreen() {
                 type="text"
                 placeholder="0"
                 value={restockQty}
-                onChange={(e) => setRestockQty(e.target.value.replace(/\D/g, ''))}
+                inputMode={isWeighed(restockProduct.unit) ? 'decimal' : 'numeric'}
+                onChange={(e) => setRestockQty(normalizeQuantityInput(e.target.value, restockProduct.unit))}
                 style={{ ...inputBase, fontSize: 20, fontWeight: 700, textAlign: 'center', padding: '14px' }}
               />
 
@@ -1197,29 +1265,29 @@ export function ProductsScreen() {
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', marginBottom: 10 }}>{t('result')}</div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                     <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('currentStock')}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{restockProduct.quantity ?? 0}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{formatQuantity(restockProduct.quantity ?? 0, restockProduct.unit)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                     <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('addToStock')}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-success)' }}>+{restockQty}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-success)' }}>+{formatQuantity(parseQuantityInput(restockQty, restockProduct.unit), restockProduct.unit)}</span>
                   </div>
                   <div style={{ height: 1, background: 'var(--color-border)', margin: '6px 0' }} />
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                     <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('newStock')}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-primary)' }}>{(restockProduct.quantity ?? 0) + (parseInt(restockQty || '0', 10))}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-primary)' }}>{formatQuantity((restockProduct.quantity ?? 0) + parseQuantityInput(restockQty, restockProduct.unit), restockProduct.unit)}</span>
                   </div>
                   <div style={{ height: 1, background: 'var(--color-border)', margin: '6px 0' }} />
                   {resolveBuyPrice(restockProduct, restockProduct) > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                       <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('restockCost')}</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{formatMoney(parseInt(restockQty || '0', 10) * resolveBuyPrice(restockProduct, restockProduct))}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{formatMoney(parseQuantityInput(restockQty, restockProduct.unit) * resolveBuyPrice(restockProduct, restockProduct))}</span>
                     </div>
                   )}
                   {resolveBuyPrice(restockProduct, restockProduct) > 0 && resolveSellPrice(restockProduct, restockProduct) > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('expectedProfitAmount')}</span>
                       <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-success)' }}>
-                        {formatMoney(parseInt(restockQty || '0', 10) * (resolveSellPrice(restockProduct, restockProduct) - resolveBuyPrice(restockProduct, restockProduct)))}
+                        {formatMoney(parseQuantityInput(restockQty, restockProduct.unit) * (resolveSellPrice(restockProduct, restockProduct) - resolveBuyPrice(restockProduct, restockProduct)))}
                       </span>
                     </div>
                   )}
