@@ -76,7 +76,7 @@ interface AppState {
   loadSnapshots: (from: string, to: string) => Promise<void>
   loadInventoryByDate: (date: string) => Promise<void>
   setSelectedDate: (date: string) => void
-  applyLocalSale: (date: string, lines: { productId: string; quantity: number; unitPrice?: number }[]) => void
+  applyLocalSale: (date: string, lines: { productId: string; quantity: number; unitPrice?: number; lineRevenue?: number }[]) => void
   getInventoryTotals: () => { start: number; current: number; sold: number; revenue: number; profit: number; stockSellValue: number; stockBuyValue: number; stockProfit: number }
   setError: (error: string | null) => void
   clearError: () => void
@@ -208,8 +208,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         // figure until the next fetch.
         const listPrice = resolveSellPrice(item, item.product)
         const buyPrice = resolveBuyPrice(item, item.product)
-        const charged = line.unitPrice ?? listPrice
-        const offList = Math.abs(charged - listPrice) > 0.005
+        // Same precedence the server uses: an exact line amount beats a
+        // per-unit price, which beats the list price.
+        const listRevenue = roundMoney(line.quantity * listPrice)
+        const chargedRevenue =
+          line.lineRevenue !== undefined
+            ? roundMoney(line.lineRevenue)
+            : line.unitPrice !== undefined
+              ? roundMoney(line.quantity * line.unitPrice)
+              : listRevenue
+        const offList = Math.abs(chargedRevenue - listRevenue) > 0.005
         const newCurrent = roundQty(Math.max(0, item.currentQuantity - line.quantity))
         const startQuantity = item.startQuantity ?? item.openingQuantity ?? item.currentQuantity
 
@@ -220,9 +228,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             ? {
                 startQuantity: roundQty(Math.max(0, startQuantity - line.quantity)),
                 lockedSold: roundQty((item.lockedSold ?? 0) + line.quantity),
-                lockedRevenue: roundMoney((item.lockedRevenue ?? 0) + line.quantity * charged),
+                lockedRevenue: roundMoney((item.lockedRevenue ?? 0) + chargedRevenue),
                 lockedProfit: roundMoney(
-                  (item.lockedProfit ?? 0) + line.quantity * (charged - buyPrice),
+                  (item.lockedProfit ?? 0) + chargedRevenue - line.quantity * buyPrice,
                 ),
               }
             : {}),

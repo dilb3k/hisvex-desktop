@@ -242,15 +242,22 @@ export const inventoryApi = {
   startDay: (items: { productId: string; startQuantity: number; currentQuantity?: number; note?: string; localId?: string; createdAt?: string; updatedAt?: string }[]) =>
     api.post('/inventory/start-day', { deviceId: getDeviceId(), date: getBusinessDate(), items }),
 
-  bulkUpdate: (items: { productId: string; currentQuantity: number; note?: string }[]) =>
+  /**
+   * `lineRevenue` restates the money taken for everything this edit counts as
+   * sold (the "Kutilgan tushum" field). Profit follows from it automatically.
+   */
+  bulkUpdate: (items: { productId: string; currentQuantity: number; lineRevenue?: number; note?: string }[]) =>
     api.put('/inventory/bulk-current', { deviceId: getDeviceId(), date: getBusinessDate(), items }),
 
   /**
-   * `unitPrice` is the price actually charged per unit when it differs from
-   * the product's list price (a negotiated price, or the per-unit result of a
-   * cart discount). Omit it to charge the list price.
+   * A line states what it actually brought in: `lineRevenue` is the money for
+   * the whole line (exact — what a hand-typed cart total uses), `unitPrice` a
+   * haggled per-unit price. Omit both to charge the list price.
    */
-  recordSales: (date: string, lines: { productId: string; quantity: number; unitPrice?: number }[]) =>
+  recordSales: (
+    date: string,
+    lines: { productId: string; quantity: number; unitPrice?: number; lineRevenue?: number }[],
+  ) =>
     api.post('/inventory/sales', { date, deviceId: getDeviceId(), lines }),
 }
 

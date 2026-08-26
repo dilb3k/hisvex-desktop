@@ -16,7 +16,7 @@ import {
   stepFor,
   roundQty,
   roundMoney,
-  roundPrice,
+  distributeTotal,
   qtyGreaterThan,
   formatQuantity,
   formatQuantityValue,
@@ -25,7 +25,7 @@ import {
 } from '../utils/inventory'
 import { formatInputAmount, parseFormattedAmount } from '../styles/shared'
 
-type DiscountMode = 'none' | 'amount' | 'percent'
+type DiscountMode = 'none' | 'amount' | 'percent' | 'total'
 
 // Loading skeleton — content-shaped placeholders (search bar + hint + card
 // list) instead of a bare spinner, matching the pattern already established
@@ -203,31 +203,29 @@ export function SalesScreen() {
     const subtotal = roundMoney(cartArray.reduce((sum, line) => sum + line.lineTotal, 0))
     const raw = parseFormattedAmount(discountInput)
 
-    let requested = 0
-    if (discountMode === 'amount') requested = Math.min(raw, subtotal)
-    else if (discountMode === 'percent') requested = subtotal * (Math.min(raw, 100) / 100)
-    requested = Math.max(requested, 0)
+    // Every way of cutting the price — a so'm discount, a percent, or simply
+    // typing the final figure — resolves to one target amount, so there is a
+    // single code path from here on.
+    let target = subtotal
+    if (discountMode === 'amount') target = subtotal - Math.min(raw, subtotal)
+    else if (discountMode === 'percent') target = subtotal * (1 - Math.min(raw, 100) / 100)
+    else if (discountMode === 'total') target = Math.min(raw, subtotal)
+    target = roundMoney(Math.max(target, 0))
 
-    const factor = subtotal > 0 ? (subtotal - requested) / subtotal : 1
-    const lines = cartArray.map(line => ({
+    // Distributed exactly, so the amount the cashier sees is the amount the
+    // server records — down to the so'm. Sending money per line (rather than a
+    // per-unit price) is what makes that possible: 25 000 over 3 units has no
+    // exact per-unit price.
+    const shares = distributeTotal(cartArray.map(line => line.lineTotal), target)
+    const lines = cartArray.map((line, i) => ({
       ...line,
-      effectiveUnitPrice: roundPrice(line.unitPrice * factor),
+      effectiveLineRevenue: shares[i] ?? line.lineTotal,
     }))
-
-    // The total is DERIVED from the per-unit prices actually sent, never from
-    // `subtotal - requested`. Computing it independently let the two drift:
-    // a 10 000 discount on 3 x 10 000 rounds each unit to 6 667, so the server
-    // records 20 001 while the screen said 20 000. The cashier must always see
-    // the number that will land in the report, so the requested discount bends
-    // by a so'm instead of the total lying.
-    const total = roundMoney(
-      lines.reduce((sum, line) => sum + roundMoney(line.quantity * line.effectiveUnitPrice), 0),
-    )
 
     return {
       subtotal,
-      discount: roundMoney(subtotal - total),
-      total,
+      discount: roundMoney(subtotal - target),
+      total: target,
       lines,
       // Line-level overrides count as a discount for display purposes too, so
       // the summary reflects everything given away, not just the cart-level cut.
@@ -391,20 +389,28 @@ export function SalesScreen() {
   // connectivity: no network round-trip is required, only the client-side
   // stock checks already enforced by handleAdd/handleBarcodeSubmit above.
   const recordSaleOffline = useCallback((
-    lines: { productId: string; quantity: number; unitPrice?: number }[],
+    lines: { productId: string; quantity: number; unitPrice?: number; lineRevenue?: number }[],
     date: string,
   ) => {
     const deviceId = getDeviceId()
     const updatedAt = new Date().toISOString()
 
     const updatedByProductId: Record<string, InventoryItem> = {}
-    for (const { productId, quantity, unitPrice } of lines) {
+    for (const { productId, quantity, unitPrice, lineRevenue } of lines) {
       const existing = inventoryByProductId[productId]
       if (!existing) continue
 
       const listPrice = resolveSellPrice(existing, existing.product)
       const buyPrice = existing.buyPrice ?? existing.product?.buyPrice ?? 0
-      const charged = unitPrice ?? listPrice
+      // Same precedence the server uses: an exact line amount beats a
+      // per-unit price, which beats the list price.
+      const listRevenue = roundMoney(quantity * listPrice)
+      const chargedRevenue =
+        lineRevenue !== undefined
+          ? roundMoney(lineRevenue)
+          : unitPrice !== undefined
+            ? roundMoney(quantity * unitPrice)
+            : listRevenue
       const newCurrent = roundQty(Math.max(0, existing.currentQuantity - quantity))
 
       // Mirrors the server's sales() exactly (see inventory.service.ts): a
@@ -413,7 +419,7 @@ export function SalesScreen() {
       // the derived span keeps valuing only the list-price units. Doing the
       // same math here means an offline discount syncs to the identical
       // numbers the online path would have produced.
-      const offList = Math.abs(charged - listPrice) > 0.005
+      const offList = Math.abs(chargedRevenue - listRevenue) > 0.005
       const startQuantity = existing.startQuantity ?? existing.openingQuantity ?? existing.currentQuantity
 
       updatedByProductId[productId] = {
@@ -423,8 +429,8 @@ export function SalesScreen() {
           ? {
               startQuantity: roundQty(Math.max(0, startQuantity - quantity)),
               lockedSold: roundQty((existing.lockedSold ?? 0) + quantity),
-              lockedRevenue: roundMoney((existing.lockedRevenue ?? 0) + quantity * charged),
-              lockedProfit: roundMoney((existing.lockedProfit ?? 0) + quantity * (charged - buyPrice)),
+              lockedRevenue: roundMoney((existing.lockedRevenue ?? 0) + chargedRevenue),
+              lockedProfit: roundMoney((existing.lockedProfit ?? 0) + chargedRevenue - quantity * buyPrice),
             }
           : {}),
       }
@@ -467,13 +473,15 @@ export function SalesScreen() {
     if (totalPieces === 0 || submitting) return
     setSubmitting(true)
     try {
-      const lines = totals.lines.map(({ productId, quantity, effectiveUnitPrice, listPrice }) => ({
+      const lines = totals.lines.map(({ productId, quantity, effectiveLineRevenue, listPrice }) => ({
         productId,
         quantity,
         // Only sent when it actually differs — an untouched line stays on the
         // server's cheap list-price path instead of being routed through the
-        // locked-price accumulators for no reason.
-        ...(Math.abs(effectiveUnitPrice - listPrice) > 0.005 ? { unitPrice: effectiveUnitPrice } : {}),
+        // locked-revenue accumulators for no reason.
+        ...(Math.abs(effectiveLineRevenue - roundMoney(quantity * listPrice)) > 0.005
+          ? { lineRevenue: effectiveLineRevenue }
+          : {}),
       }))
       const today = getBusinessDate()
 
@@ -998,7 +1006,7 @@ export function SalesScreen() {
               {t('discount')}
             </span>
             <div style={{ display: 'flex', gap: 6 }}>
-              {(['none', 'amount', 'percent'] as DiscountMode[]).map((mode) => {
+              {(['none', 'amount', 'percent', 'total'] as DiscountMode[]).map((mode) => {
                 const active = discountMode === mode
                 return (
                   <button
@@ -1017,7 +1025,13 @@ export function SalesScreen() {
                       transition: 'all 0.15s',
                     }}
                   >
-                    {mode === 'none' ? t('noDiscount') : mode === 'amount' ? "so'm" : '%'}
+                    {mode === 'none'
+                      ? t('noDiscount')
+                      : mode === 'amount'
+                        ? "so'm"
+                        : mode === 'percent'
+                          ? '%'
+                          : t('finalPrice')}
                   </button>
                 )
               })}
@@ -1027,8 +1041,8 @@ export function SalesScreen() {
                 type="text"
                 inputMode="numeric"
                 autoFocus
-                aria-label={discountMode === 'percent' ? t('discountPercent') : t('discountAmount')}
-                placeholder={discountMode === 'percent' ? '10' : '5 000'}
+                aria-label={discountMode === 'percent' ? t('discountPercent') : discountMode === 'total' ? t('finalPrice') : t('discountAmount')}
+                placeholder={discountMode === 'percent' ? '10' : discountMode === 'total' ? formatInputAmount(String(totals.subtotal)) : '5 000'}
                 value={discountInput}
                 onChange={(e) => setDiscountInput(formatInputAmount(e.target.value))}
                 style={{ ...smallInput, flex: '1 1 120px', maxWidth: 170 }}
@@ -1058,7 +1072,41 @@ export function SalesScreen() {
               <div style={{
                 fontSize: 19, fontWeight: 800, color: 'var(--color-metric-revenue)',
                 fontVariantNumeric: 'tabular-nums', letterSpacing: -0.3,
-              }}>{formatMoney(totals.total)}</div>
+              }}>
+                {/* Directly editable: the most common real-world ask is "u
+                    shuncha berdi" — the cashier states the money taken and
+                    everything else (per-line amounts, the discount, the
+                    profit) follows from it, rather than making them work
+                    backwards to a percentage. */}
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  aria-label={t('saleTotal')}
+                  disabled={totalPieces === 0}
+                  value={discountMode === 'total' ? discountInput : formatInputAmount(String(totals.total))}
+                  onChange={(e) => { setDiscountMode('total'); setDiscountInput(formatInputAmount(e.target.value)) }}
+                  onFocus={() => {
+                    if (discountMode !== 'total') {
+                      setDiscountMode('total')
+                      setDiscountInput(formatInputAmount(String(totals.total)))
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: 0,
+                    border: 'none',
+                    borderBottom: `1px dashed ${totalPieces === 0 ? 'transparent' : 'var(--color-border)'}`,
+                    background: 'transparent',
+                    outline: 'none',
+                    fontSize: 19,
+                    fontWeight: 800,
+                    color: 'var(--color-metric-revenue)',
+                    fontVariantNumeric: 'tabular-nums',
+                    letterSpacing: -0.3,
+                    fontFamily: 'inherit',
+                  }}
+                />
+              </div>
               {/* Only shown when money was actually given away, so the normal
                   sale keeps a single clean number. */}
               {hasDiscount && (
