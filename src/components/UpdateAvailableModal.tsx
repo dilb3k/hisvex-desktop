@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react'
 import { Download, X } from 'lucide-react'
 import { t } from '../i18n'
 
-// Source of truth for releases is the same GitHub repo the landing page's
-// download buttons already point at (see hisvex-landing/src/App.tsx) — no
-// backend change needed, and every future release is picked up automatically
-// the moment its tag is published, with zero extra maintenance step.
-const RELEASES_API = 'https://api.github.com/repos/dilb3k/hisvex-landing/releases/latest'
+// This app's installers are published by its own repo's release workflow
+// (.github/workflows/release.yml, on every `v*` tag) — so that is the only
+// repo whose latest tag says anything about whether this install is current.
+//
+// It used to point at dilb3k/hisvex-landing, whose releases stopped at
+// v1.0.7: every desktop release after that was published here and never seen,
+// so no running install was ever told an update existed.
+const RELEASES_API = 'https://api.github.com/repos/dilb3k/hisvex-desktop/releases/latest'
 const DOWNLOAD_URL = 'https://hisvex-landing.vercel.app/#download-section'
 
 // Re-checking on literally every launch would hit GitHub's unauthenticated
