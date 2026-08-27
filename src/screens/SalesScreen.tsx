@@ -209,7 +209,9 @@ export function SalesScreen() {
     let target = subtotal
     if (discountMode === 'amount') target = subtotal - Math.min(raw, subtotal)
     else if (discountMode === 'percent') target = subtotal * (1 - Math.min(raw, 100) / 100)
-    else if (discountMode === 'total') target = Math.min(raw, subtotal)
+    // An empty field means "not stated yet", not "charge nothing" — in total
+    // mode zero would give the whole cart away.
+    else if (discountMode === 'total') target = discountInput.trim() ? Math.min(raw, subtotal) : subtotal
     target = roundMoney(Math.max(target, 0))
 
     // Distributed exactly, so the amount the cashier sees is the amount the
@@ -1011,7 +1013,10 @@ export function SalesScreen() {
                 return (
                   <button
                     key={mode}
-                    onClick={() => { setDiscountMode(mode); if (mode === 'none') setDiscountInput('') }}
+                    onClick={() => {
+                      setDiscountMode(mode)
+                      setDiscountInput(mode === 'total' ? formatInputAmount(String(totals.total)) : '')
+                    }}
                     style={{
                       padding: '6px 12px',
                       borderRadius: 7,

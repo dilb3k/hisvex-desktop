@@ -62,14 +62,17 @@ export const distributeTotal = (weights: number[], target: number): number[] => 
   if (sum <= 0) {
     // Nothing to weigh by (e.g. every line is already free): put it all on
     // the first line rather than dividing by zero.
-    return weights.map((_, i) => (i === 0 ? roundMoney(target) : 0))
+    return weights.map((_, i) => (i === 0 ? roundPrice(target) : 0))
   }
-  const shares = weights.map((w) => roundMoney((target * w) / sum))
-  const drift = roundMoney(target - shares.reduce((a, b) => a + b, 0))
+  // Whole so'm, not two decimals: so'm has no subunit, so a distributed
+  // total must not leave 22 941.18 sitting in a report. The remainder is
+  // handed to the largest line below, so the sum still lands on `target`.
+  const shares = weights.map((w) => roundPrice((target * w) / sum))
+  const drift = roundPrice(target - shares.reduce((a, b) => a + b, 0))
   if (drift !== 0) {
     let biggest = 0
     for (let i = 1; i < weights.length; i++) if (weights[i] > weights[biggest]) biggest = i
-    shares[biggest] = roundMoney(shares[biggest] + drift)
+    shares[biggest] = roundPrice(shares[biggest] + drift)
   }
   return shares
 }
