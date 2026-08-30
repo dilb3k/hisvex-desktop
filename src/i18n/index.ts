@@ -250,6 +250,7 @@ export const translations = {
     netProfit: 'Sof foyda',
     totalRevenueLabel: 'Jami tushum',
     soldPieces: 'Sotilgan dona',
+    sellingNow: 'Sotuvda (qoldiq)',
     marginPercent: 'Marja foizi',
     topProductsLabel: 'Top mahsulotlar',
     leastSold: 'Kam sotilgan',
@@ -677,6 +678,7 @@ export const translations = {
     netProfit: 'Чистая прибыль',
     totalRevenueLabel: 'Общий доход',
     soldPieces: 'Продано шт.',
+    sellingNow: 'В продаже (остаток)',
     marginPercent: 'Маржа %',
     topProductsLabel: 'Топ товары',
     leastSold: 'Мало продано',
@@ -857,12 +859,43 @@ export const translations = {
 
 export type TranslationKey = keyof typeof translations.uz
 
-let currentLanguage: Language = 'uz'
+const LANGUAGE_STORAGE_KEY = 'hisvex_language'
 
-export const getLanguage = () => currentLanguage
+function readStoredLanguage(): Language {
+  try {
+    const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY)
+    return saved === 'ru' || saved === 'uz' ? saved : 'uz'
+  } catch {
+    return 'uz'
+  }
+}
+
+// Read at module init rather than from the entry point, so `t()` is already
+// answering in the right language during the very first render.
+let currentLanguage: Language = readStoredLanguage()
+
+/**
+ * `t()` is a plain function reading this module-level variable, so React has
+ * no way to know the answer changed — switching the language in Settings only
+ * re-rendered Settings itself (it holds its own `useState`), while the sidebar
+ * and every other screen kept the old language until the app was restarted.
+ * These listeners are what App subscribes to so the tree can be re-rendered on
+ * a switch.
+ */
+const languageListeners = new Set<() => void>()
+
+export const subscribeLanguage = (listener: () => void) => {
+  languageListeners.add(listener)
+  return () => { languageListeners.delete(listener) }
+}
+
+export const getLanguage = (): Language => currentLanguage
 
 export const setLanguage = (lang: Language) => {
+  if (lang === currentLanguage) return
   currentLanguage = lang
+  try { localStorage.setItem(LANGUAGE_STORAGE_KEY, lang) } catch {}
+  languageListeners.forEach((listener) => listener())
 }
 
 export const t = (key: TranslationKey, params?: Record<string, string | number>): string => {

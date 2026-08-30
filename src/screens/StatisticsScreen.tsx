@@ -6,7 +6,7 @@ import { useAppStore } from '../store/appStore'
 import dayjs from 'dayjs'
 import {
   Download, CalendarClock, RefreshCw, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight,
-  Wallet, ShoppingCart, Percent, AlertTriangle,
+  Wallet, ShoppingCart, Boxes, AlertTriangle,
 } from 'lucide-react'
 import { t } from '../i18n'
 import { getBusinessDate } from '../utils/businessDay'
@@ -896,7 +896,7 @@ export function StatisticsScreen() {
             <div style={s.heroLabel}><Wallet size={15} /> {t('totalRevenue') || 'Jami tushum'}</div>
             <div style={s.heroValue}>{formatMoney(totals.revenue)}</div>
             <div style={s.heroChips}>
-              <span style={s.heroChip}>{t('soldPieces') || 'Sotilgan dona'}: {totals.sold}</span>
+              <span style={s.heroChip}>{t('soldPieces') || 'Sotilgan dona'}: {formatQuantityValue(totals.sold, 'kg')}</span>
               <span style={s.heroChip}>{t('marginPercent') || 'Marja foizi'}: {margin}%</span>
             </div>
           </div>
@@ -907,25 +907,57 @@ export function StatisticsScreen() {
             <StatBarChart buckets={chartBuckets} metric={metric} loading={chartIsLoading} emptyText={t('chartNoData') || "Bu davr uchun ma'lumot yo'q"} height={140} />
           </div>
 
-          {/* KPI cards — realized-period breakdown */}
+          {/* KPI cards — realized-period breakdown.
+              Profit alone did not answer the two questions actually asked of
+              this screen every day: how much has been sold, and how much is
+              still on the shelf waiting to sell. Both now sit next to it,
+              each card carrying the money figure under the quantity so the
+              pieces and the so'm are never read apart. */}
           <div style={s.kpiGrid}>
             {[
+              {
+                icon: <Wallet size={18} />,
+                label: t('soldValue') || 'Sotilgan qiymat',
+                value: formatMoney(totals.revenue),
+                sub: `${t('soldPieces') || 'Sotilgan dona'}: ${formatQuantityValue(totals.sold, 'kg')}`,
+                color: 'var(--color-metric-revenue)',
+                bg: 'var(--color-metric-revenue-soft)',
+                negative: false,
+              },
               {
                 icon: negativeNetProfit ? <TrendingDown size={18} /> : <TrendingUp size={18} />,
                 label: t('netProfit') || 'Sof foyda',
                 value: formatMoney(totals.profit),
+                sub: `${t('marginPercent') || 'Marja foizi'}: ${margin}%`,
                 color: negativeNetProfit ? 'var(--color-danger)' : 'var(--color-metric-profit)',
                 bg: negativeNetProfit ? 'var(--color-danger-soft)' : 'var(--color-metric-profit-soft)',
                 negative: negativeNetProfit,
               },
-              { icon: <ShoppingCart size={18} />, label: t('soldPieces') || 'Sotilgan dona', value: String(totals.sold), color: 'var(--color-metric-qty)', bg: 'var(--color-metric-qty-soft)', negative: false },
-              { icon: <Percent size={18} />, label: t('marginPercent') || 'Marja foizi', value: `${margin}%`, color: 'var(--color-violet)', bg: 'var(--color-violet-soft)', negative: false },
+              {
+                icon: <ShoppingCart size={18} />,
+                label: t('soldPieces') || 'Sotilgan dona',
+                value: formatQuantityValue(totals.sold, 'kg'),
+                sub: `${t('soldValue') || 'Sotilgan qiymat'}: ${formatMoney(totals.revenue)}`,
+                color: 'var(--color-metric-qty)', bg: 'var(--color-metric-qty-soft)', negative: false,
+              },
+              {
+                icon: <Boxes size={18} />,
+                label: t('sellingNow') || 'Sotuvda (qoldiq)',
+                value: overallTotals ? formatQuantityValue(overallTotals.remainingItems, 'kg') : '0',
+                sub: overallTotals
+                  ? `${t('remainingStockValue') || 'Qolgan sklad qiymati'}: ${formatMoney(overallTotals.stockValue)}`
+                  : undefined,
+                color: 'var(--color-violet)', bg: 'var(--color-violet-soft)', negative: false,
+              },
             ].map((item, i) => (
               <div key={i} style={s.kpiCard}>
                 <div style={{ ...s.kpiIcon, background: item.bg, color: item.color }}>{item.icon}</div>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <div style={s.kpiLabel}>{item.label}</div>
-                  <div style={{ ...s.kpiValue, color: item.negative ? item.color : 'var(--color-text)' }}>{item.value}</div>
+                  <div style={{ ...s.kpiValue, color: item.negative ? item.color : 'var(--color-text)', overflowWrap: 'anywhere' }}>{item.value}</div>
+                  {item.sub && (
+                    <div style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', marginTop: 3, overflowWrap: 'anywhere' }}>{item.sub}</div>
+                  )}
                 </div>
               </div>
             ))}

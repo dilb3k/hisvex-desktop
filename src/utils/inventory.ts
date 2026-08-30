@@ -46,36 +46,6 @@ export const roundMoney = (value: number): number =>
 export const roundPrice = (value: number): number =>
   Number.isFinite(value) ? Math.round(value) : 0
 
-/**
- * Split a target amount across lines in proportion to what each contributes,
- * landing on the target EXACTLY.
- *
- * Rounding each share independently cannot do that — three shares of 25 000
- * round to 8333 each and sum to 24 999 — so the accumulated rounding error is
- * handed to the largest line, which is the one where a so'm is least visible.
- * The result is what gets sent as each line's revenue, so the total the
- * cashier typed is the total the report records.
- */
-export const distributeTotal = (weights: number[], target: number): number[] => {
-  const sum = weights.reduce((a, b) => a + b, 0)
-  if (weights.length === 0) return []
-  if (sum <= 0) {
-    // Nothing to weigh by (e.g. every line is already free): put it all on
-    // the first line rather than dividing by zero.
-    return weights.map((_, i) => (i === 0 ? roundPrice(target) : 0))
-  }
-  // Whole so'm, not two decimals: so'm has no subunit, so a distributed
-  // total must not leave 22 941.18 sitting in a report. The remainder is
-  // handed to the largest line below, so the sum still lands on `target`.
-  const shares = weights.map((w) => roundPrice((target * w) / sum))
-  const drift = roundPrice(target - shares.reduce((a, b) => a + b, 0))
-  if (drift !== 0) {
-    let biggest = 0
-    for (let i = 1; i < weights.length; i++) if (weights[i] > weights[biggest]) biggest = i
-    shares[biggest] = roundPrice(shares[biggest] + drift)
-  }
-  return shares
-}
 
 export const normalizeQuantity = (value: number, unit?: string | null): number => {
   if (!Number.isFinite(value)) return 0
@@ -265,4 +235,29 @@ export const getInventoryTotals = (items: (InventoryItem & { product?: Product }
     stockSellValue: roundMoney(totalStockSellValue), stockBuyValue: roundMoney(totalStockBuyValue),
     stockProfit: roundMoney(totalStockProfit),
   }
+}
+
+/**
+ * The one product order used by every screen (Products, Inventory, Sales).
+ *
+ * Each screen sorted on its own before: Products fell back to
+ * `displayIndex ?? 0`, Inventory and Sales to `?? 999` — so a product with no
+ * display index sat at the top of one list and the bottom of the others. Same
+ * catalog, two different sequences.
+ *
+ * Unset (missing, 0 or negative) means "no explicit position" and sorts after
+ * everything that has one; ties break on name so the order is stable.
+ */
+export const compareProducts = (
+  a?: { displayIndex?: number; name?: string } | null,
+  b?: { displayIndex?: number; name?: string } | null,
+): number => {
+  const rank = (p?: { displayIndex?: number } | null) => {
+    const idx = p?.displayIndex
+    return typeof idx === 'number' && idx > 0 ? idx : Number.MAX_SAFE_INTEGER
+  }
+  const ra = rank(a)
+  const rb = rank(b)
+  if (ra !== rb) return ra - rb
+  return (a?.name || '').localeCompare(b?.name || '')
 }

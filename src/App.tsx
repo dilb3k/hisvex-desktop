@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { Fragment, useEffect, useSyncExternalStore } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
+import { getLanguage, subscribeLanguage } from './i18n'
 import { setUnauthorizedHandler, setTokensRefreshedHandler } from './api/client'
 import { initBusinessDay } from './utils/businessDay'
 import { LoginScreen } from './screens/LoginScreen'
@@ -36,6 +37,14 @@ export function App() {
 
   useEffect(() => { hydrate() }, [hydrate])
 
+  // `t()` is a plain function, so nothing outside the Settings screen
+  // re-rendered when the language changed — the sidebar and every other screen
+  // kept the old language until the app was restarted. Keying the tree on the
+  // language remounts it on a switch, which is the only reliable way to
+  // invalidate `t()` results that are read during render (including inside
+  // useMemo bodies and style objects).
+  const language = useSyncExternalStore(subscribeLanguage, getLanguage, getLanguage)
+
   useEffect(() => { initBusinessDay() }, [])
 
   useEffect(() => {
@@ -62,23 +71,25 @@ export function App() {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Titlebar />
       <div style={{ flex: 1, minHeight: 0 }}>
-        <HashRouter>
-          <UpdateAvailableModal />
-          <Routes>
-            <Route path="/login" element={<PublicRoute><LoginScreen /></PublicRoute>} />
-            <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-              <Route index element={<StatisticsScreen />} />
-              <Route path="products" element={<ProductsScreen />} />
-              <Route path="inventory" element={<InventoryScreen />} />
-              <Route path="sales" element={<SalesScreen />} />
-              <Route path="debtors" element={<DebtorsScreen />} />
-              <Route path="settings" element={<SettingsScreen />} />
-              <Route path="users" element={<UsersScreen />} />
-              <Route path="statistics" element={<Navigate to="/" replace />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Route>
-          </Routes>
-        </HashRouter>
+        <Fragment key={language}>
+          <HashRouter>
+            <UpdateAvailableModal />
+            <Routes>
+              <Route path="/login" element={<PublicRoute><LoginScreen /></PublicRoute>} />
+              <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+                <Route index element={<StatisticsScreen />} />
+                <Route path="products" element={<ProductsScreen />} />
+                <Route path="inventory" element={<InventoryScreen />} />
+                <Route path="sales" element={<SalesScreen />} />
+                <Route path="debtors" element={<DebtorsScreen />} />
+                <Route path="settings" element={<SettingsScreen />} />
+                <Route path="users" element={<UsersScreen />} />
+                <Route path="statistics" element={<Navigate to="/" replace />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Route>
+            </Routes>
+          </HashRouter>
+        </Fragment>
       </div>
     </div>
   )

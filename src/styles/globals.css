@@ -298,3 +298,43 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   margin: 0;
   max-width: 320px;
 }
+
+/* Sales screen checkout bar.
+   The three buttons are flex children whose labels do not wrap, and a flex
+   child defaults to min-width: auto — so once their labels together were
+   wider than the window they simply refused to shrink and the last one
+   ("Savdoni tasdiqlash") overflowed off the right edge. min-width: 0 lets
+   them shrink; below 560px Confirm gets its own full-width row so it is
+   never truncated. */
+.sales-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sales-actions > button {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.sales-actions > button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sales-actions > button svg {
+  flex-shrink: 0;
+}
+
+.sales-actions > .sales-actions-confirm {
+  flex: 1.5 1 0;
+}
+
+@media (max-width: 560px) {
+  .sales-actions > .sales-actions-confirm {
+    order: -1;
+    flex: 1 0 100%;
+  }
+}

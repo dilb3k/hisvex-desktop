@@ -14,6 +14,7 @@ import type { Product, InventoryItem, ProductUnit } from '../types'
 import { formatMoney, formatInputAmount, parseFormattedAmount, overlay } from '../styles/shared'
 import { getBusinessDate } from '../utils/businessDay'
 import {
+  compareProducts,
   resolveSellPrice,
   resolveBuyPrice,
   clampCurrentQuantity,
@@ -246,11 +247,9 @@ export function InventoryScreen() {
         stockSellValue, unitProfit, sellPrice, buyPrice,
       })
     }
-    result.sort((a, b) => {
-      const ia = a.product.displayIndex ?? 999
-      const ib = b.product.displayIndex ?? 999
-      return ia !== ib ? ia - ib : (a.product.name || '').localeCompare(b.product.name || '')
-    })
+    // Shared comparator — Products, Inventory and Sales all order the catalog
+    // identically now (see compareProducts in utils/inventory.ts).
+    result.sort((a, b) => compareProducts(a.product, b.product))
     return result
   }, [items])
 

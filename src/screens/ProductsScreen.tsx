@@ -7,6 +7,7 @@ import { t } from '../i18n'
 import { PageHeader } from '../components/PageHeader'
 import type { Product, ProductUnit } from '../types'
 import {
+  compareProducts,
   resolveSellPrice,
   resolveBuyPrice,
   DEFAULT_UNIT,
@@ -176,7 +177,11 @@ function RequiredMark() {
 const hintText: React.CSSProperties = { fontSize: 11.5, color: 'var(--color-text-tertiary)', margin: '5px 0 0', lineHeight: 1.4 }
 
 export function ProductsScreen() {
-  const { products, loadProducts } = useAppStore()
+  const { products } = useAppStore()
+  const refreshAll = useAppStore((s) => s.refreshAll)
+  // Bumped by refreshAll() after any mutation anywhere in the app, so a sale
+  // recorded on the Sales screen updates these quantities immediately.
+  const refreshKey = useAppStore((s) => s.refreshKey)
   const showToast = useAppStore((s) => s.showToast)
   const storeLoading = useAppStore((s) => s.loading.products)
   const [search, setSearch] = useState('')
@@ -243,17 +248,23 @@ export function ProductsScreen() {
   // from a stale unrelated `error` value when products were already cached
   // from an earlier visit (in which case loadProducts() short-circuits
   // without touching `error` at all).
+  // Only the first load shows the skeleton; refreshes driven by a sale or an
+  // edit elsewhere repaint in place.
+  const hasLoadedOnce = useRef(false)
   const doLoadProducts = useCallback(async (force?: boolean) => {
-    setLoading(true)
-    await loadProducts(force)
+    if (!hasLoadedOnce.current) setLoading(true)
+    await useAppStore.getState().loadProducts(force)
     const { products: loaded, error } = useAppStore.getState()
     setFetchError(loaded.length === 0 && !!error)
+    hasLoadedOnce.current = true
     setLoading(false)
-  }, [loadProducts])
+  }, [])
 
   useEffect(() => {
     doLoadProducts()
-  }, [doLoadProducts])
+    // refreshKey intentionally re-triggers this load on any global refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doLoadProducts, refreshKey])
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300)
@@ -263,11 +274,11 @@ export function ProductsScreen() {
   const sortedProducts = useMemo(() => {
     return [...products]
       .filter((p) => !debouncedSearch || p.name.toLowerCase().includes(debouncedSearch.toLowerCase()))
-      .sort((a, b) => {
-        const ia = a.displayIndex ?? 0
-        const ib = b.displayIndex ?? 0
-        return ia !== ib ? ia - ib : a.name.localeCompare(b.name)
-      })
+      // Shared comparator — this screen used to treat a missing displayIndex
+      // as 0 (sorting those first) while Inventory and Sales treated it as 999
+      // (sorting them last), so the same catalog read in a different order on
+      // each screen.
+      .sort(compareProducts)
   }, [products, debouncedSearch])
 
   // KPI totals — computed over the full catalog (not the search-filtered
@@ -481,7 +492,7 @@ export function ProductsScreen() {
       }
       closeProductModal()
       clearApiCache()
-      await loadProducts(true)
+      await refreshAll()
       return true
     } catch (err: unknown) {
       if (isNetworkError(err)) {
@@ -503,7 +514,7 @@ export function ProductsScreen() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [form, editingProduct, loadProducts, products, saveProductOffline])
+  }, [form, editingProduct, refreshAll, products, saveProductOffline])
 
   const handleSave = async () => {
     if (!validate()) return
@@ -577,7 +588,7 @@ export function ProductsScreen() {
       await productsApi.restock(restockProduct._id, qtyToAdd)
       closeRestockModal()
       clearApiCache()
-      await loadProducts(true)
+      await refreshAll()
     } catch (err: unknown) {
       if (isNetworkError(err)) {
         restockProductOffline(qtyToAdd)
@@ -611,7 +622,7 @@ export function ProductsScreen() {
       setShowDeleteModal(false); setDeleteTarget(null)
       closeProductModal()
       clearApiCache()
-      await loadProducts(true)
+      await refreshAll()
     } catch (err: unknown) {
       if (isNetworkError(err)) {
         showToast(t('deleteOfflineNotAllowed'), 'error')
