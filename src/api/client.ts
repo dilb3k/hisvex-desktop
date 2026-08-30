@@ -14,6 +14,11 @@ import type {
   SyncPayload,
   User,
 } from '../types'
+// Imported rather than redeclared: this file and constants/index.ts each held
+// their own copy of the same fallback URL, so pointing the app at a different
+// backend meant editing two places, and missing one would quietly send half
+// the app to the old server.
+import { API_BASE_URL } from '../constants'
 import { getBusinessDate } from '../utils/businessDay'
 import { setStoredToken, setStoredRefreshToken } from '../utils/authStorage'
 
@@ -22,7 +27,6 @@ interface InventoryResponse {
   summary?: InventorySummary
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://hisvex-prod-api.onrender.com/api'
 
 let apiToken: string | null = null
 let apiRefreshToken: string | null = null
