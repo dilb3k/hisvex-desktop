@@ -419,6 +419,17 @@ export function InventoryScreen() {
     return {
       prevSold: selectedEntry.sold,
       newSold,
+      // What THIS edit does, as opposed to the day totals around it.
+      //
+      // The maths was never wrong — remaining is always measured against the
+      // opening quantity, which is what makes a mid-day recount work at all —
+      // but the panel only ever showed the day totals. Typing 87 over a
+      // remaining of 88 put "19 sold" on screen when one single unit had just
+      // been sold, and 19 is the number that catches the eye. The delta is now
+      // stated outright so the two readings can't be confused.
+      soldNow: roundQty(newSold - selectedEntry.sold),
+      revenueNow: roundMoney(newRevenue - selectedEntry.revenue),
+      profitNow: roundMoney(newProfit - selectedEntry.realizedProfit),
       listRevenue,
       newRevenue,
       newProfit,
@@ -576,6 +587,41 @@ export function InventoryScreen() {
               {p && (
                 <div style={s.previewBox}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginBottom: 8 }}>{t('preSaveCheck')}</div>
+
+                  {/* What this one edit does, stated first and on its own.
+                      Everything below it is a day total, which is what made
+                      the panel misleading: typing 87 over a remaining of 88
+                      showed "19 sold" — correct for the day, but one unit was
+                      what actually just changed hands. */}
+                  <div style={{
+                    display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8,
+                    padding: '9px 11px', borderRadius: 9, marginBottom: 8,
+                    background: p.soldNow === 0 ? 'var(--color-surface)' : 'var(--color-primary-soft)',
+                    border: `1px solid ${p.soldNow === 0 ? 'var(--color-border)' : 'var(--color-primary)'}`,
+                  }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                      {p.soldNow === 0 ? t('noQtyChange') : p.soldNow > 0 ? t('sellingNowQty') : t('returningNowQty')}
+                    </span>
+                    {p.soldNow !== 0 && (
+                      <span style={{ textAlign: 'right', minWidth: 0 }}>
+                        <span style={{
+                          fontSize: 16, fontWeight: 800, color: 'var(--color-primary)',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}>
+                          {formatQuantity(Math.abs(p.soldNow), selectedEntry.unit)}
+                        </span>
+                        <span style={{ display: 'block', fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 1 }}>
+                          {formatMoney(Math.abs(p.revenueNow))}
+                          {' · '}
+                          {t('profit')} {formatMoney(Math.abs(p.profitNow))}
+                        </span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 }}>
+                    {t('dayTotals')}
+                  </div>
                   <div style={s.fieldRow}><span style={s.fieldLabel}>{t('previousSold')}</span><span style={s.fieldValue}>{formatQuantity(p.prevSold, selectedEntry.unit)}</span></div>
                   <div style={s.fieldRow}><span style={s.fieldLabel}>{t('newSold')}</span><span style={s.fieldValue}>{formatQuantity(p.newSold, selectedEntry.unit)}</span></div>
                   {/* Editable: the shop often takes a different amount than
