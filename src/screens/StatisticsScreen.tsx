@@ -6,9 +6,10 @@ import { useAppStore } from '../store/appStore'
 import dayjs from 'dayjs'
 import {
   Download, CalendarClock, RefreshCw, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight,
-  Wallet, ShoppingCart, Boxes, AlertTriangle,
+  Wallet, ShoppingCart, Boxes, AlertTriangle, Lock,
 } from 'lucide-react'
 import { t } from '../i18n'
+import { useAuthStore } from '../store/authStore'
 import { getBusinessDate } from '../utils/businessDay'
 import { formatMoney, spinner } from '../styles/shared'
 import {
@@ -486,6 +487,43 @@ const RangeButton = forwardRef<HTMLDivElement, { value?: string; onClick?: () =>
   </div>
 ))
 
+// Bor/Pro-only screen. A 'tekin' admin keeps every operational screen
+// (Sales, Products, Inventory) fully working — this locks the
+// reporting/analytics layer specifically, not the ability to run the shop
+// day to day. The fetch effects below skip the network call entirely when
+// locked, and the render below returns this instead of the real page, so a
+// locked-out account never even requests the aggregated numbers this
+// screen exists to sell.
+function StatisticsLocked() {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
+      padding: '64px 24px', maxWidth: 420, margin: '40px auto 0',
+    }}>
+      <div style={{
+        width: 56, height: 56, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(145,149,166,0.12)', color: 'var(--color-text-secondary)', marginBottom: 18,
+      }}>
+        <Lock size={24} />
+      </div>
+      <h2 style={{ fontSize: 17, fontWeight: 700, color: 'var(--color-text)', margin: '0 0 8px' }}>
+        {t('statsLockedTitle')}
+      </h2>
+      <p style={{ fontSize: 13.5, color: 'var(--color-text-secondary)', lineHeight: 1.6, margin: '0 0 20px' }}>
+        {t('statsLockedBody')}
+      </p>
+      <a
+        href="https://t.me/dilbek7011"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="btn btn-primary"
+      >
+        {t('contactAdmin')}
+      </a>
+    </div>
+  )
+}
+
 export function StatisticsScreen() {
   const [period, setPeriod] = useState<Period>('daily')
   const [selectedDate, setSelectedDate] = useState(getBusinessDate)
@@ -517,8 +555,17 @@ export function StatisticsScreen() {
   const range = useMemo(() => getPeriodRange(period, selectedDate), [period, selectedDate])
   const periodLabel = useMemo(() => formatPeriodLabel(period, selectedDate), [period, selectedDate])
   const refreshKey = useAppStore((s) => s.refreshKey)
+  const tier = useAuthStore((s) => s.user?.tier)
+  // Undefined (not yet hydrated) never locks - only an explicit 'tekin'
+  // does, so a cache miss fails open to "show the page" rather than
+  // flashing the lock screen for every paying admin on every load.
+  const isLocked = tier === 'tekin'
 
   const fetchData = useCallback(async () => {
+    // Locked account: never even ask. "Statistikalar kelmasligi kerak" -
+    // the numbers this screen exists to show must not arrive over the wire
+    // for a 'tekin' admin, not just be withheld from the render.
+    if (isLocked) { setLoading(false); return }
     setLoading(true)
     setFetchError(false)
     try {
@@ -532,7 +579,7 @@ export function StatisticsScreen() {
     } finally {
       setLoading(false)
     }
-  }, [range.from, range.to, refreshKey])
+  }, [range.from, range.to, refreshKey, isLocked])
 
   useEffect(() => {
     fetchData()
@@ -544,7 +591,7 @@ export function StatisticsScreen() {
   }, [period, selectedDate])
 
   const fetchChartWindow = useCallback(async () => {
-    if (!chartWindowRange) {
+    if (!chartWindowRange || isLocked) {
       setChartWindowItems([])
       return
     }
@@ -557,7 +604,7 @@ export function StatisticsScreen() {
     } finally {
       setChartWindowLoading(false)
     }
-  }, [chartWindowRange?.from, chartWindowRange?.to])
+  }, [chartWindowRange?.from, chartWindowRange?.to, isLocked])
 
   useEffect(() => {
     fetchChartWindow()
@@ -816,6 +863,8 @@ export function StatisticsScreen() {
   }
 
   const negativeNetProfit = totals.profit < 0
+
+  if (isLocked) return <StatisticsLocked />
 
   return (
     <div style={s.container}>

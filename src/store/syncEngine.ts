@@ -198,6 +198,12 @@ async function performSync(): Promise<SyncResult> {
       (item) => ENTITY_TO_KIND[item.entity] && TERMINAL_REJECT_REASONS.has(item.reason),
     ).length
 
+    // Also not terminal (the cap is escaped by deleting a product or upgrading
+    // tier, so the queued item is correctly kept for a later retry — see
+    // TERMINAL_REJECT_REASONS above), but "qayta urinib ko'riladi" alone tells
+    // a 'bor'-tier admin nothing about why, or what would actually fix it.
+    const limitExceededTotal = data.rejected.filter((item) => item.reason === 'PRODUCT_LIMIT_EXCEEDED').length
+
     applyPulledUpdates(data)
     setLastSyncAt(data.serverTime)
 
@@ -208,6 +214,12 @@ async function performSync(): Promise<SyncResult> {
         return {
           ok: true,
           error: `${droppedTotal} ta yozuv sinxronlanmadi (kun yopilgan) va o'chirildi`,
+        }
+      }
+      if (limitExceededTotal > 0) {
+        return {
+          ok: true,
+          error: `${limitExceededTotal} ta mahsulot sinxronlanmadi — Bor tarifida 100 tadan ortiq mahsulot bo'lishi mumkin emas. Boshqa mahsulotni o'chiring yoki Pro tarifga o'ting.`,
         }
       }
       if (retryTotal > 0) {
