@@ -4,6 +4,7 @@ import { useAppStore } from '../store/appStore'
 import { adminsApi } from '../api/client'
 import { Users, CreditCard, Shield, Pencil, Trash2, LogOut, X, Clock, AlertTriangle, RefreshCw } from 'lucide-react'
 import { t } from '../i18n'
+import { PasswordInput } from '../components/PasswordInput'
 import { PageHeader } from '../components/PageHeader'
 import { formatPhone } from '../utils/formatters'
 import type { User } from '../types'
@@ -574,8 +575,7 @@ function AdminFormModal({
               {isEdit ? t('passwordNew') : t('password')}
               {isEdit && <span style={{ fontWeight: 400, color: 'var(--color-text-secondary)' }}> (ixtiyoriy)</span>}
             </label>
-            <input
-              type="password"
+            <PasswordInput
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               style={inputStyle}

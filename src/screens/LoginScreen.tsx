@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { authApi } from '../api/client'
 import { useAuthStore } from '../store/authStore'
 import { t } from '../i18n'
+import { PasswordInput } from '../components/PasswordInput'
 import { formatPhone } from '../utils/formatters'
 
 const inputStyle = (focused: boolean): React.CSSProperties => ({
@@ -344,8 +345,7 @@ export function LoginScreen() {
 
                 <div>
                   <label style={labelStyle}>{t('password')}</label>
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     onFocus={() => setFocusedField('password')}
@@ -361,8 +361,7 @@ export function LoginScreen() {
                   <>
                     <div>
                       <label style={labelStyle}>{t('confirmPassword')}</label>
-                      <input
-                        type="password"
+                      <PasswordInput
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         onFocus={() => setFocusedField('confirm')}
