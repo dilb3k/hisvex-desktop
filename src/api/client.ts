@@ -201,7 +201,18 @@ export const authApi = {
       ...(businessDayStartHour !== undefined ? { businessDayStartHour } : {}),
     }),
 
-  logout: () => api.post('/auth/logout'),
+  // Token passed explicitly: clearSession() clears apiToken synchronously,
+  // but the request interceptor only reads it when the request is dispatched
+  // a microtask later — so the logout went out unauthenticated, the server
+  // answered 401, and activeSessionId was never released. The next login on
+  // this account then demanded phone verification for a device that had
+  // signed out cleanly.
+  logout: (token?: string) =>
+    api.post(
+      '/auth/logout',
+      undefined,
+      token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+    ),
 
   getMe: () => api.get<User>('/auth/me'),
 

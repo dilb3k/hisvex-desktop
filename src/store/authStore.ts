@@ -122,7 +122,12 @@ export const useAuthStore = create<AuthState>((set) => ({
 // the unauthorizedHandler wiring in App.tsx) so clearing logic exists in
 // exactly one place.
 export function clearSession(): void {
-  try { authApi.logout().catch(() => {}) } catch {}
+  // Captured before anything clears it — see authApi.logout. Harmless when
+  // this runs from the 401 interceptor with an already-invalid token: a 401
+  // on /auth/logout is excluded from the unauthorized handler, so it cannot
+  // loop.
+  const token = useAuthStore.getState().token
+  try { authApi.logout(token).catch(() => {}) } catch {}
   setApiToken(null)
   setRefreshToken('')
   clearApiCache()
