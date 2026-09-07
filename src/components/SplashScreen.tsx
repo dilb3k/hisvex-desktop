@@ -3,13 +3,13 @@ import { t } from '../i18n'
 /**
  * Shown while auth hydrates, before the router decides where to send the user.
  *
- * Deliberately the same composition as the mobile native splash (a haloed
- * mark, the two-tone wordmark, a quiet tagline) so the two products read as
- * one app rather than two that happen to share a logo. Everything sits in a
- * single centred stack with real space between the three elements — the
- * previous version had the wordmark as a gradient-clipped heading with a row
- * of pulsing dots hard under it, which crowded the mark and gave the eye no
- * clear order to read in.
+ * Same composition as the mobile native splash and this app's own
+ * LoginScreen.tsx (a haloed mark, the two-tone wordmark, a quiet tagline) —
+ * all three now read as one app rather than several that happen to share a
+ * logo. This used to carry its own fixed dark-violet gradient (#070512
+ * family) instead of --color-bg/--color-primary/etc, so it looked like a
+ * different product from the rest of the desktop app and stayed dark even
+ * when the light theme was picked.
  */
 export function SplashScreen() {
   return (
@@ -18,16 +18,10 @@ export function SplashScreen() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: '#070512',
+      background: 'var(--color-bg)',
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Base gradient — same stops as the mobile splash. */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        background: 'linear-gradient(180deg, #070512 0%, #100B30 32%, #0C0820 68%, #070512 100%)',
-      }} />
-
       {/* Ambient light, kept off the edges so no glow ends on a hard arc. */}
       <div style={{
         position: 'absolute', width: 720, height: 720, borderRadius: '50%',
@@ -86,14 +80,14 @@ export function SplashScreen() {
           marginBottom: 14,
           animation: 'slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both',
         }}>
-          <span style={{ color: '#A78BFA' }}>His</span>
-          <span style={{ color: '#FFFFFF' }}>vex</span>
+          <span style={{ color: 'var(--color-primary)' }}>His</span>
+          <span style={{ color: 'var(--color-text)' }}>vex</span>
         </div>
 
         <div style={{
           fontSize: 13.5,
           letterSpacing: 0.6,
-          color: 'rgba(196,181,253,0.62)',
+          color: 'var(--color-text-secondary)',
           animation: 'slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both',
         }}>
           {t('splashTagline')}
@@ -108,7 +102,7 @@ export function SplashScreen() {
           marginTop: 34,
           borderRadius: 2,
           overflow: 'hidden',
-          background: 'rgba(167,139,250,0.12)',
+          background: 'var(--color-border)',
           animation: 'slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both',
         }}>
           <div style={{

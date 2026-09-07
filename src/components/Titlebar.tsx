@@ -1,16 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Minus, Square, X } from 'lucide-react'
 
-const isWin = typeof window !== 'undefined' ? !!window.electronAPI?.isWindows?.() : false
+export const isWin = typeof window !== 'undefined' ? !!window.electronAPI?.isWindows?.() : false
 
-// Height of the fully-revealed bar, and how much of it stays visible (as a
-// hover/drag sliver right at the top edge of the window) while collapsed.
-const BAR_HEIGHT = 36
-const SLIVER_HEIGHT = 6
-// Delay before hiding again after the mouse leaves — long enough that
-// moving the mouse from the sliver up into the bar (or briefly overshooting
-// past a button) doesn't cause it to flicker shut mid-click.
-const HIDE_DELAY_MS = 350
+// Height of the bar. Permanently on-screen now (see below) — exported so
+// App.tsx can reserve exactly this much space for it in the layout below,
+// rather than the two drifting out of sync as separate magic numbers.
+export const BAR_HEIGHT = 36
 
 const s: Record<string, React.CSSProperties> = {
   bar: {
@@ -26,7 +22,6 @@ const s: Record<string, React.CSSProperties> = {
     boxShadow: '0 6px 16px rgba(0,0,0,0.22)',
     userSelect: 'none',
     zIndex: 9999,
-    transition: 'transform 0.16s ease',
   },
   title: {
     flex: 1,
@@ -56,14 +51,8 @@ const s: Record<string, React.CSSProperties> = {
 
 export function Titlebar() {
   const [maximized, setMaximized] = useState(false)
-  // Collapsed by default — only the bottom `SLIVER_HEIGHT` px stay parked at
-  // the very top edge of the window as a hover/drag target. Moving the mouse
-  // up into that sliver (or onto the bar itself, once revealed) slides the
-  // full bar — title + minimize/maximize/close — down into view.
-  const [revealed, setRevealed] = useState(false)
   const barRef = useRef<HTMLDivElement>(null)
   const controlsRef = useRef<HTMLDivElement>(null)
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!isWin) return
@@ -97,25 +86,6 @@ export function Titlebar() {
     return () => { el.style.removeProperty('-webkit-app-region') }
   }, [])
 
-  useEffect(() => () => {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
-  }, [])
-
-  const cancelHide = () => {
-    if (hideTimerRef.current) {
-      clearTimeout(hideTimerRef.current)
-      hideTimerRef.current = null
-    }
-  }
-  const reveal = () => {
-    cancelHide()
-    setRevealed(true)
-  }
-  const scheduleHide = () => {
-    cancelHide()
-    hideTimerRef.current = setTimeout(() => setRevealed(false), HIDE_DELAY_MS)
-  }
-
   const handleMinimize = () => window.electronAPI?.minimizeWindow()
   const handleMaximize = () => window.electronAPI?.maximizeWindow()
   const handleClose = () => window.electronAPI?.closeWindow()
@@ -123,15 +93,14 @@ export function Titlebar() {
   if (!isWin) return null
 
   return (
-    <div
-      ref={barRef}
-      style={{
-        ...s.bar,
-        transform: revealed ? 'translateY(0)' : `translateY(-${BAR_HEIGHT - SLIVER_HEIGHT}px)`,
-      }}
-      onMouseEnter={reveal}
-      onMouseLeave={scheduleHide}
-    >
+    // Permanently visible — this used to auto-hide to a 6px sliver and
+    // slide down on hover, which read as flaky rather than intentional
+    // (the reveal/hide timing could catch a click mid-transition, and a
+    // window with no visible minimize/maximize/close by default doesn't
+    // look "in control"). A static bar can't have that class of bug.
+    // App.tsx now reserves BAR_HEIGHT of space below it so it never
+    // overlaps real content the way the hover-reveal could.
+    <div ref={barRef} style={s.bar}>
       <div style={s.title}>
         <img src="./Hisvex.png" alt="Hisvex" style={{ width: 18, height: 18, objectFit: 'cover', borderRadius: 5 }} />
         <span>Hisvex</span>

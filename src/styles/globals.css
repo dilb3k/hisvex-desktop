@@ -338,3 +338,54 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
     flex: 1 0 100%;
   }
 }
+
+/* Login screen — same split layout as hisvex-web's login page (.login-split
+   etc. in its own globals.css). LoginScreen.tsx used to carry its own fixed
+   violet-gradient palette instead of this app's --color-* tokens, so it read
+   as a different product from the rest of the desktop app (and from web).
+   `min-height: 100dvh` is deliberately not set here, unlike web's version —
+   LoginScreen.tsx already sizes its own root to `height: 100%` to avoid
+   double-counting against the Titlebar space App.tsx reserves above it. */
+.login-split {
+  height: 100%;
+  display: flex;
+  background: var(--color-bg);
+}
+
+.login-brand {
+  /* Fixed-ish share of the width rather than 50/50: past ~1400px an even
+     split leaves the form marooned in the middle of a very wide window. */
+  flex: 0 0 44%;
+  max-width: 620px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  padding: 56px clamp(40px, 5vw, 72px);
+  /* Deliberately a fixed violet in both themes, not a token: this panel is
+     the brand surface, and its white text needs a dark ground underneath it
+     whichever theme is active. */
+  background: linear-gradient(155deg, #4C1D95 0%, #6D28D9 46%, #7C3AED 100%);
+  color: #fff;
+}
+
+.login-form-col {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  padding: clamp(28px, 7vh, 64px) clamp(16px, 5vw, 40px) clamp(24px, 6vh, 48px);
+}
+
+.login-form-col > * {
+  margin-block: auto;
+}
+
+/* The form column repeats the logo and wordmark only when the panel is gone. */
+.login-compact-head { display: none; }
+
+@media (max-width: 900px) {
+  .login-brand { display: none; }
+  .login-compact-head { display: block; }
+}

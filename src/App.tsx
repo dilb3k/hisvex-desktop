@@ -15,7 +15,7 @@ import { UsersScreen } from './screens/UsersScreen'
 import { AppLayout } from './components/AppLayout'
 import { SplashScreen } from './components/SplashScreen'
 import { UpdateAvailableModal } from './components/UpdateAvailableModal'
-import { Titlebar } from './components/Titlebar'
+import { Titlebar, isWin, BAR_HEIGHT } from './components/Titlebar'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore()
@@ -70,7 +70,13 @@ export function App() {
     // mount for every screen exactly once.
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Titlebar />
-      <div style={{ flex: 1, minHeight: 0 }}>
+      {/* Titlebar is `position: fixed`, so it takes up no space of its own
+          here — this padding is what stops it (now permanently visible,
+          not just a hover sliver) from sitting on top of the first ~36px
+          of every screen's own content. Windows only: on other platforms
+          Titlebar renders nothing and the OS supplies its own chrome, so
+          there's nothing here to make room for. */}
+      <div style={{ flex: 1, minHeight: 0, paddingTop: isWin ? BAR_HEIGHT : 0 }}>
         <Fragment key={language}>
           <HashRouter>
             <UpdateAvailableModal />

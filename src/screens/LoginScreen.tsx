@@ -5,27 +5,32 @@ import { t } from '../i18n'
 import { PasswordInput } from '../components/PasswordInput'
 import { formatPhone } from '../utils/formatters'
 
-const inputStyle = (focused: boolean): React.CSSProperties => ({
-  width: '100%',
-  padding: '12px 14px',
-  borderRadius: 10,
-  border: '1.5px solid',
-  borderColor: focused ? '#7c3aed' : 'rgba(124,58,237,0.2)',
-  background: 'rgba(255,255,255,0.04)',
-  color: 'rgba(255,255,255,0.9)',
-  fontSize: 15,
-  outline: 'none',
-  boxSizing: 'border-box' as const,
-  transition: 'border-color 0.2s',
-  fontFamily: 'inherit',
-})
+// Every value here is a theme token, not a literal — matches hisvex-web's
+// login page exactly (both used to carry their own fixed violet-dark
+// palette, which is why this screen looked like a different product from
+// the rest of the desktop app, and from web, and stayed dark even when the
+// light theme was picked).
+const C = {
+  bg: 'var(--color-bg)',
+  surface: 'var(--color-surface)',
+  primary: 'var(--color-primary)',
+  primaryHover: 'var(--color-primary-hover)',
+  primarySoft: 'var(--color-primary-soft)',
+  border: 'var(--color-border)',
+  borderFocus: 'var(--color-primary)',
+  text: 'var(--color-text)',
+  textSecondary: 'var(--color-text-secondary)',
+  textTertiary: 'var(--color-text-tertiary)',
+  danger: 'var(--color-danger)',
+  dangerBg: 'var(--color-danger-soft)',
+}
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
-  fontSize: 13,
+  fontSize: 12.5,
   fontWeight: 600,
-  color: 'rgba(167,139,250,0.65)',
-  marginBottom: 6,
+  color: C.textSecondary,
+  marginBottom: 5,
   marginLeft: 2,
 }
 
@@ -131,368 +136,405 @@ export function LoginScreen() {
     setError('')
   }
 
-  return (
-    // `height: 100%` (not `100vh`) — Titlebar (see App.tsx) is a hover-reveal
-    // overlay on Windows, not a flex sibling, so this always fills the full
-    // window height; `100vh` here would double-count against html/body/#root
-    // (which already clip to the viewport, see globals.css) in some
-    // webview edge cases and risk clipping the bottom of the form instead
-    // of scrolling it into view.
-    <div style={{
-      height: '100%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: '#070512',
-      padding: 32,
-      position: 'relative',
-      overflow: 'auto',
-    }}>
-      {/* Background gradients */}
-      <div style={{
-        position: 'fixed', inset: 0,
-        background: 'linear-gradient(180deg, #070512 0%, #0F0A2E 30%, #0C0820 65%, #070512 100%)',
-        zIndex: 0,
-      }} />
-      <div style={{
-        position: 'fixed', width: 600, height: 600, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(124,58,237,0.08) 0%, transparent 70%)',
-        top: '-200px', right: '-200px', zIndex: 0,
-      }} />
-      <div style={{
-        position: 'fixed', width: 500, height: 500, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(124,58,237,0.05) 0%, transparent 70%)',
-        bottom: '-150px', left: '-150px', zIndex: 0,
-      }} />
-      <div style={{
-        position: 'fixed', width: 720, height: 720, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(124,58,237,0.07) 0%, rgba(124,58,237,0.02) 55%, transparent 70%)',
-        top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 0,
-      }} />
+  const inputStyle = (field: string): React.CSSProperties => ({
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: 9,
+    border: '1.5px solid',
+    borderColor: focusedField === field ? C.borderFocus : C.border,
+    background: C.surface,
+    color: C.text,
+    fontSize: 14,
+    outline: 'none',
+    boxSizing: 'border-box',
+    transition: 'border-color 0.15s',
+    fontFamily: 'inherit',
+  })
 
-      <div style={{ width: '100%', maxWidth: 400, position: 'relative', zIndex: 1 }}>
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+  return (
+    <div className="login-split">
+      {/* Brand panel. Hidden below 900px rather than stacked above the form:
+          on a narrow window it would push the actual inputs off the first
+          screen, and the whole point of the panel is space a narrow layout
+          doesn't have. The compact lockup inside the form column covers
+          that case. */}
+      <aside className="login-brand">
+        {/* Ambient light, kept off the edges so no glow ends on a hard arc. */}
+        <div style={{
+          position: 'absolute', width: 620, height: 620, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(255,255,255,0.16) 0%, transparent 70%)',
+          top: '-240px', right: '-180px', pointerEvents: 'none',
+        }} />
+        <div style={{
+          position: 'absolute', width: 520, height: 520, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(255,255,255,0.10) 0%, transparent 70%)',
+          bottom: '-200px', left: '-160px', pointerEvents: 'none',
+        }} />
+
+        <div style={{ position: 'relative', zIndex: 1, maxWidth: 420 }}>
+          {/* The mark sits on the form's own surface color rather than
+              straight on the violet: the artwork is itself a violet tile,
+              so against the panel it read as a washed-out box with a
+              visible edge — a contrasting plate makes it deliberate. */}
           <div style={{
-            width: 88, height: 88, borderRadius: 22,
-            overflow: 'hidden', margin: '0 auto 22px',
-            boxShadow: '0 12px 40px rgba(124,58,237,0.35)',
+            width: 92, height: 92, borderRadius: 24,
+            marginBottom: 30, boxShadow: '0 14px 40px rgba(0,0,0,0.30)',
+            background: C.surface, overflow: 'hidden',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <img
               src="./hisvex-logo.png" alt="Hisvex"
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
           </div>
+
           <h1 style={{
-            margin: 0, fontSize: 34, fontWeight: 800, letterSpacing: -0.5, lineHeight: 1.2,
-            background: 'linear-gradient(135deg, #A78BFA 0%, #7C3AED 60%, #6D28D9 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
+            margin: 0, display: 'flex',
+            fontSize: 48, fontWeight: 800, letterSpacing: -1.4, lineHeight: 1,
           }}>
-            Hisvex
+            <span style={{ color: '#DDD1FE' }}>His</span>
+            <span style={{ color: '#FFFFFF' }}>vex</span>
           </h1>
-          <p style={{ margin: '8px 0 0', fontSize: 14, color: 'rgba(167,139,250,0.65)', letterSpacing: 0.4 }}>
+
+          <p style={{
+            margin: '18px 0 0', fontSize: 18, lineHeight: 1.55,
+            color: 'rgba(255,255,255,0.82)', fontWeight: 500,
+          }}>
+            {t('splashTagline')}
+          </p>
+
+          <div style={{
+            width: 52, height: 3, borderRadius: 3, marginTop: 30,
+            background: 'rgba(255,255,255,0.32)',
+          }} />
+        </div>
+      </aside>
+
+      {/* Form column. Owns the page background and the scroll, so a long
+          register form scrolls without dragging the brand panel with it. */}
+      <main className="login-form-col">
+        <div style={{ width: '100%', maxWidth: 360, position: 'relative', zIndex: 1 }}>
+          <div className="login-compact-head" style={{ textAlign: 'center', marginBottom: 24 }}>
+            <div style={{
+              width: 68, height: 68, borderRadius: 18,
+              margin: '0 auto 14px',
+              boxShadow: '0 8px 26px rgba(124,58,237,0.22)',
+              background: C.surface, overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <img
+                src="./hisvex-logo.png" alt="Hisvex"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </div>
+            <h1 style={{
+              margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: -0.5, lineHeight: 1.2,
+              display: 'flex', justifyContent: 'center',
+            }}>
+              <span style={{ color: C.primary }}>His</span>
+              <span style={{ color: C.text }}>vex</span>
+            </h1>
+          </div>
+
+          {/* Outside the compact lockup: the wide layout drops the logo and
+              wordmark (the panel already carries them) but still needs to say
+              which form this is. */}
+          <p style={{
+            margin: '0 0 24px', fontSize: 14, color: C.textSecondary,
+            letterSpacing: 0.3, textAlign: 'center',
+          }}>
             {phoneVerifyStep
               ? t('verifyPhone')
               : isLoginMode ? t('signInToSystem') : t('createAccount')}
           </p>
-        </div>
 
-        <div style={{
-          borderRadius: 20,
-          border: '1px solid rgba(167,139,250,0.15)',
-          background: 'rgba(255,255,255,0.03)',
-          padding: 24,
-        }}>
-          {phoneVerifyStep ? (
-            <form onSubmit={(e) => { e.preventDefault(); handlePhoneVerify() }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {error ? (
-                <div style={{
-                  borderRadius: 10, padding: 12,
-                  border: '1px solid rgba(239,68,68,0.25)',
-                  background: 'rgba(239,68,68,0.1)',
-                }}>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 500, textAlign: 'center', color: '#EF4444' }}>
-                    {error}
-                  </p>
-                </div>
-              ) : (
-                <div style={{
-                  borderRadius: 10, padding: 12,
-                  border: '1px solid #7c3aed',
-                  background: 'rgba(124,58,237,0.12)',
-                }}>
-                  <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: '#A78BFA' }}>
-                    {t('sessionActiveTitle')}
-                  </p>
-                  <p style={{ margin: 0, fontSize: 13, color: 'rgba(167,139,250,0.65)', lineHeight: 1.5 }}>
-                    {t('sessionActiveMessage')}
-                  </p>
-                  <p style={{ margin: '8px 0 0', fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
-                    {t('maskedPhoneHint').replace('{phone}', maskedPhone)}
-                  </p>
-                </div>
-              )}
-
-              <div>
-                <label style={labelStyle}>{t('phoneNumber')}</label>
-                <input
-                  type="tel"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(formatPhone(e.target.value))}
-                  onFocus={() => setFocusedField('verifyPhone')}
-                  onBlur={() => setFocusedField(null)}
-                  style={inputStyle(focusedField === 'verifyPhone')}
-                  placeholder="+998 90 123 45 67"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                style={{
-                  width: '100%', padding: 16, borderRadius: 10, border: 'none',
-                  background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
-                  color: '#fff', fontSize: 15, fontWeight: 700,
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.7 : 1, marginTop: 4,
-                  boxShadow: loading ? 'none' : '0 4px 20px rgba(124,58,237,0.3)',
-                  transition: 'opacity 0.2s, box-shadow 0.2s',
-                }}
-              >
-                {loading ? t('loading') : t('verifyPhone')}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => { setPhoneVerifyStep(false); setError('') }}
-                disabled={loading}
-                style={{
-                  width: '100%', padding: 14, borderRadius: 10,
-                  border: '1px solid rgba(167,139,250,0.15)',
-                  background: 'none', color: 'rgba(167,139,250,0.65)',
-                  fontSize: 15, fontWeight: 600,
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.7 : 1,
-                }}
-              >
-                {t('cancel')}
-              </button>
-            </form>
-          ) : (
-            <>
-              <div style={{ display: 'flex', gap: 24, marginBottom: 20 }}>
-                <button
-                  type="button"
-                  onClick={() => switchMode('login')}
-                  style={{
-                    paddingBottom: 8, border: 'none', background: 'none', cursor: 'pointer',
-                    borderBottom: isLoginMode ? '2px solid #7c3aed' : '2px solid transparent',
-                    transition: 'border-color 0.2s',
-                  }}
-                >
-                  <span style={{
-                    fontSize: 16, fontWeight: isLoginMode ? 700 : 600,
-                    color: isLoginMode ? '#7c3aed' : 'rgba(167,139,250,0.3)',
-                    transition: 'color 0.2s',
-                  }}>{t('signIn')}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => switchMode('register')}
-                  style={{
-                    paddingBottom: 8, border: 'none', background: 'none', cursor: 'pointer',
-                    borderBottom: !isLoginMode ? '2px solid #7c3aed' : '2px solid transparent',
-                    transition: 'border-color 0.2s',
-                  }}
-                >
-                  <span style={{
-                    fontSize: 16, fontWeight: !isLoginMode ? 700 : 600,
-                    color: !isLoginMode ? '#7c3aed' : 'rgba(167,139,250,0.3)',
-                    transition: 'color 0.2s',
-                  }}>{t('signUp')}</span>
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {error && (
+          <div style={{
+            borderRadius: 16, border: `1px solid ${C.border}`,
+            background: C.surface, padding: 20,
+          }}>
+            {phoneVerifyStep ? (
+              <form onSubmit={(e) => { e.preventDefault(); handlePhoneVerify() }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {error ? (
                   <div style={{
                     borderRadius: 10, padding: 12,
-                    border: '1px solid rgba(239,68,68,0.25)',
-                    background: 'rgba(239,68,68,0.1)',
+                    border: `1px solid ${C.danger}`,
+                    background: C.dangerBg,
                   }}>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 500, textAlign: 'center', color: '#EF4444' }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 500, textAlign: 'center', color: C.danger }}>
                       {error}
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{
+                    borderRadius: 10, padding: 12,
+                    border: `1px solid ${C.primary}`,
+                    background: C.primarySoft,
+                  }}>
+                    <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, color: C.primary }}>
+                      {t('sessionActiveTitle')}
+                    </p>
+                    <p style={{ margin: 0, fontSize: 13, color: C.textSecondary, lineHeight: 1.5 }}>
+                      {t('sessionActiveMessage')}
+                    </p>
+                    <p style={{ margin: '8px 0 0', fontSize: 13, fontWeight: 600, color: C.text }}>
+                      {t('maskedPhoneHint').replace('{phone}', maskedPhone)}
                     </p>
                   </div>
                 )}
 
                 <div>
-                  <label style={labelStyle}>{t('loginLabel')}</label>
+                  <label style={labelStyle}>{t('phoneNumber')}</label>
                   <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    onFocus={() => setFocusedField('username')}
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(formatPhone(e.target.value))}
+                    onFocus={() => setFocusedField('verifyPhone')}
                     onBlur={() => setFocusedField(null)}
-                    style={inputStyle(focusedField === 'username')}
-                    placeholder={t('loginPlaceholder')}
+                    style={inputStyle('verifyPhone')}
+                    placeholder="+998 90 123 45 67"
                     autoCapitalize="none"
                     autoCorrect="off"
                   />
                 </div>
-
-                <div>
-                  <label style={labelStyle}>{t('password')}</label>
-                  <PasswordInput
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    onFocus={() => setFocusedField('password')}
-                    onBlur={() => setFocusedField(null)}
-                    style={inputStyle(focusedField === 'password')}
-                    placeholder={t('passwordPlaceholder')}
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                  />
-                </div>
-
-                {!isLoginMode && (
-                  <>
-                    <div>
-                      <label style={labelStyle}>{t('confirmPassword')}</label>
-                      <PasswordInput
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        onFocus={() => setFocusedField('confirm')}
-                        onBlur={() => setFocusedField(null)}
-                        style={inputStyle(focusedField === 'confirm')}
-                        placeholder={t('confirmPasswordPlaceholder')}
-                        autoCapitalize="none"
-                        autoCorrect="off"
-                      />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>{t('phoneNumber')}</label>
-                      <input
-                        type="tel"
-                        value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(formatPhone(e.target.value))}
-                        onFocus={() => setFocusedField('phone')}
-                        onBlur={() => setFocusedField(null)}
-                        style={inputStyle(focusedField === 'phone')}
-                        placeholder={t('phoneNumberPlaceholder')}
-                        autoCapitalize="none"
-                        autoCorrect="off"
-                      />
-                    </div>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, marginLeft: 2 }}>
-                        <label style={{ ...labelStyle, marginBottom: 0 }}>{t('businessDayStartHour')}</label>
-                        <button
-                          type="button"
-                          onClick={() => setShowBusinessDayHelp(true)}
-                          title={t('whatIsThis')}
-                          style={{
-                            width: 20, height: 20, borderRadius: '50%',
-                            border: '1px solid rgba(124,58,237,0.35)',
-                            background: 'rgba(124,58,237,0.12)',
-                            color: '#A78BFA', fontSize: 13, fontWeight: 700,
-                            lineHeight: '18px', padding: 0, cursor: 'pointer',
-                          }}
-                        >
-                          ?
-                        </button>
-                      </div>
-                      {/* Hour must be selected from a dropdown, not typed —
-                          the previous react-datepicker customInput was declared
-                          inline inside this component, so it got recreated (and
-                          remounted, losing focus) on every render. */}
-                      <select
-                        value={businessDayStartHour}
-                        onChange={(e) => setBusinessDayStartHour(e.target.value)}
-                        onFocus={() => setFocusedField('businessHour')}
-                        onBlur={() => setFocusedField(null)}
-                        style={{
-                          ...inputStyle(focusedField === 'businessHour'),
-                          cursor: 'pointer',
-                          // `color` above cascades into <option>, but `background`
-                          // does not — on Windows/Chromium the native dropdown
-                          // popup then falls back to its default white background,
-                          // leaving the inherited near-white text invisible.
-                          // colorScheme tells Chromium to render that native
-                          // popup (and its options) using a dark palette.
-                          colorScheme: 'dark',
-                        }}
-                      >
-                        <option value="" disabled style={{ background: '#0F0A2E', color: 'rgba(255,255,255,0.9)' }}>
-                          {t('businessDayStartHourPlaceholder')}
-                        </option>
-                        {Array.from({ length: 24 }, (_, h) => h).map((h) => (
-                          <option
-                            key={h}
-                            value={h}
-                            style={{ background: '#0F0A2E', color: 'rgba(255,255,255,0.9)' }}
-                          >
-                            {String(h).padStart(2, '0')}:00
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
 
                 <button
                   type="submit"
                   disabled={loading}
                   style={{
-                    width: '100%', padding: 16, borderRadius: 10, border: 'none',
-                    background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
-                    color: '#fff', fontSize: 15, fontWeight: 700,
+                    width: '100%', padding: '12px 16px', borderRadius: 9, border: 'none',
+                    background: C.primary, color: '#fff',
+                    fontSize: 14, fontWeight: 700,
                     cursor: loading ? 'not-allowed' : 'pointer',
                     opacity: loading ? 0.7 : 1, marginTop: 4,
-                    boxShadow: loading ? 'none' : '0 4px 20px rgba(124,58,237,0.3)',
-                    transition: 'opacity 0.2s, box-shadow 0.2s',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={(e) => { if (!loading) e.currentTarget.style.background = C.primaryHover }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = C.primary }}
+                >
+                  {loading ? t('loading') : t('verifyPhone')}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setPhoneVerifyStep(false); setError('') }}
+                  disabled={loading}
+                  style={{
+                    width: '100%', padding: '11px 16px', borderRadius: 9,
+                    border: `1px solid ${C.border}`, background: 'none',
+                    color: C.textSecondary, fontSize: 14, fontWeight: 600,
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    opacity: loading ? 0.7 : 1,
                   }}
                 >
-                  {loading ? t('loading') : isLoginMode ? t('signIn') : t('signUp')}
+                  {t('cancel')}
                 </button>
               </form>
-            </>
-          )}
-        </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', gap: 20, marginBottom: 18 }}>
+                  <button
+                    type="button"
+                    onClick={() => switchMode('login')}
+                    style={{
+                      paddingBottom: 8, border: 'none', background: 'none', cursor: 'pointer',
+                      borderBottom: isLoginMode ? `2px solid ${C.primary}` : '2px solid transparent',
+                    }}
+                  >
+                    <span style={{
+                      fontSize: 14.5, fontWeight: isLoginMode ? 700 : 600,
+                      color: isLoginMode ? C.primary : C.textTertiary,
+                    }}>{t('signIn')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => switchMode('register')}
+                    style={{
+                      paddingBottom: 8, border: 'none', background: 'none', cursor: 'pointer',
+                      borderBottom: !isLoginMode ? `2px solid ${C.primary}` : '2px solid transparent',
+                    }}
+                  >
+                    <span style={{
+                      fontSize: 14.5, fontWeight: !isLoginMode ? 700 : 600,
+                      color: !isLoginMode ? C.primary : C.textTertiary,
+                    }}>{t('signUp')}</span>
+                  </button>
+                </div>
 
-        <div style={{ marginTop: 28, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          {!phoneVerifyStep && (
-            <>
-              <p style={{ margin: 0, fontSize: 13, color: 'rgba(167,139,250,0.3)' }}>
-                {isLoginMode ? t('noAccountSwitch') : t('haveAccountSwitch')}
-              </p>
-              <button
-                type="button"
-                onClick={() => switchMode(isLoginMode ? 'register' : 'login')}
-                style={{
-                  background: 'none', border: 'none', color: '#7c3aed',
-                  cursor: 'pointer', fontSize: 15, fontWeight: 700, padding: 0,
-                }}
-              >
-                {isLoginMode ? t('signUpHere') : t('signInHere')}
-              </button>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={openAdminContact}
-            style={{
-              marginTop: 8, background: 'none', border: 'none', cursor: 'pointer',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: 8,
-            }}
-          >
-            <span style={{ fontSize: 13, color: 'rgba(167,139,250,0.65)' }}>{t('contactAdminLink')}</span>
-            <span style={{ fontSize: 15, fontWeight: 700, color: '#A78BFA' }}>{t('contactAdminTelegram')}</span>
-          </button>
+                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {error && (
+                    <div style={{
+                      borderRadius: 10, padding: 12,
+                      border: `1px solid ${C.danger}`,
+                      background: C.dangerBg,
+                    }}>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 500, textAlign: 'center', color: C.danger }}>
+                        {error}
+                      </p>
+                    </div>
+                  )}
+
+                  <div>
+                    <label style={labelStyle}>{t('loginLabel')}</label>
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      onFocus={() => setFocusedField('username')}
+                      onBlur={() => setFocusedField(null)}
+                      style={inputStyle('username')}
+                      placeholder={t('loginPlaceholder')}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                    />
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>{t('password')}</label>
+                    <PasswordInput
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      onFocus={() => setFocusedField('password')}
+                      onBlur={() => setFocusedField(null)}
+                      style={inputStyle('password')}
+                      placeholder={t('passwordPlaceholder')}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                    />
+                  </div>
+
+                  {!isLoginMode && (
+                    <>
+                      <div>
+                        <label style={labelStyle}>{t('confirmPassword')}</label>
+                        <PasswordInput
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          onFocus={() => setFocusedField('confirm')}
+                          onBlur={() => setFocusedField(null)}
+                          style={inputStyle('confirm')}
+                          placeholder={t('confirmPasswordPlaceholder')}
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                        />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>{t('phoneNumber')}</label>
+                        <input
+                          type="tel"
+                          value={phoneNumber}
+                          onChange={(e) => setPhoneNumber(formatPhone(e.target.value))}
+                          onFocus={() => setFocusedField('phone')}
+                          onBlur={() => setFocusedField(null)}
+                          style={inputStyle('phone')}
+                          placeholder={t('phoneNumberPlaceholder')}
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                        />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, marginLeft: 2 }}>
+                          <label style={{ ...labelStyle, marginBottom: 0 }}>{t('businessDayStartHour')}</label>
+                          <button
+                            type="button"
+                            onClick={() => setShowBusinessDayHelp(true)}
+                            title={t('whatIsThis')}
+                            style={{
+                              width: 20, height: 20, borderRadius: '50%',
+                              border: '1px solid rgba(124,58,237,0.35)',
+                              background: 'rgba(124,58,237,0.12)',
+                              color: C.primary, fontSize: 13, fontWeight: 700,
+                              lineHeight: '18px', padding: 0, cursor: 'pointer',
+                            }}
+                          >
+                            ?
+                          </button>
+                        </div>
+                        {/* Hour must be selected from a dropdown, not typed —
+                            the previous react-datepicker customInput was declared
+                            inline inside this component, so it got recreated (and
+                            remounted, losing focus) on every render. */}
+                        <select
+                          value={businessDayStartHour}
+                          onChange={(e) => setBusinessDayStartHour(e.target.value)}
+                          onFocus={() => setFocusedField('businessHour')}
+                          onBlur={() => setFocusedField(null)}
+                          style={{ ...inputStyle('businessHour'), cursor: 'pointer' }}
+                        >
+                          {/* Options get explicit opaque colors, not the select's
+                              translucent theme colors: the native popup list
+                              (esp. on Windows) renders its own solid background
+                              and ignores inherited alpha, which left translucent
+                              text unreadable on the OS's white dropdown. */}
+                          <option value="" disabled style={{ background: C.surface, color: C.text }}>
+                            {t('businessDayStartHourPlaceholder')}
+                          </option>
+                          {Array.from({ length: 24 }, (_, h) => h).map((h) => (
+                            <option
+                              key={h}
+                              value={h}
+                              style={{ background: C.surface, color: C.text }}
+                            >
+                              {String(h).padStart(2, '0')}:00
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    style={{
+                      width: '100%', padding: '12px 16px', borderRadius: 9, border: 'none',
+                      background: C.primary, color: '#fff',
+                      fontSize: 15, fontWeight: 700,
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      opacity: loading ? 0.7 : 1, marginTop: 4,
+                      transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={(e) => { if (!loading) e.currentTarget.style.background = C.primaryHover }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = C.primary }}
+                  >
+                    {loading ? t('loading') : isLoginMode ? t('signIn') : t('signUp')}
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+
+          <div style={{ marginTop: 28, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            {!phoneVerifyStep && (
+              <>
+                <p style={{ margin: 0, fontSize: 13, color: C.textTertiary }}>
+                  {isLoginMode ? t('noAccountSwitch') : t('haveAccountSwitch')}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => switchMode(isLoginMode ? 'register' : 'login')}
+                  style={{
+                    background: 'none', border: 'none', color: C.primary,
+                    cursor: 'pointer', fontSize: 13.5, fontWeight: 700, padding: 0,
+                  }}
+                >
+                  {isLoginMode ? t('signUpHere') : t('signInHere')}
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={openAdminContact}
+              style={{
+                marginTop: 8, background: 'none', border: 'none', cursor: 'pointer',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: 8,
+              }}
+            >
+              <span style={{ fontSize: 13, color: C.textSecondary }}>{t('contactAdminLink')}</span>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: C.primary }}>{t('contactAdminTelegram')}</span>
+            </button>
+          </div>
         </div>
-      </div>
+      </main>
 
       {showBusinessDayHelp && (
         <div
@@ -507,25 +549,24 @@ export function LoginScreen() {
             onClick={(e) => e.stopPropagation()}
             style={{
               width: '100%', maxWidth: 420,
-              borderRadius: 20,
-              border: '1px solid rgba(167,139,250,0.15)',
-              background: '#0F0A2E',
-              padding: 24,
+              borderRadius: 16,
+              border: `1px solid ${C.border}`,
+              background: C.surface,
+              padding: 22,
             }}
           >
-            <p style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 700, color: '#A78BFA' }}>
+            <p style={{ margin: '0 0 10px', fontSize: 16, fontWeight: 700, color: C.primary }}>
               {t('businessDayStartHelpTitle')}
             </p>
-            <p style={{ margin: 0, fontSize: 14, color: 'rgba(255,255,255,0.9)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+            <p style={{ margin: 0, fontSize: 14, color: C.text, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
               {t('businessDayStartHelpBody')}
             </p>
             <button
               type="button"
               onClick={() => setShowBusinessDayHelp(false)}
               style={{
-                width: '100%', marginTop: 20, padding: 14, borderRadius: 10, border: 'none',
-                background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
-                color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+                width: '100%', marginTop: 18, padding: '11px 16px', borderRadius: 9, border: 'none',
+                background: C.primary, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
               }}
             >
               {t('gotIt')}
