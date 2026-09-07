@@ -165,16 +165,19 @@ export function DebtorsScreen() {
   // flight from this screen at a time).
   const [saving, setSaving] = useState(false)
 
-  // PIN gate for Delete — mirrors ProductsScreen.tsx's blockCode/
-  // showPinVerify/pinAction pattern. Delete is the most destructive action
-  // on this screen (it also wipes the debtor's whole history, see the
-  // confirmation copy below), so it's routed through the same protection
-  // Save/Delete get on Products when blockCode is set. Add/Edit/Adjust are
-  // left ungated here, matching what this pass's spec calls for.
+  // PIN gate for Delete and for subtracting from a debt — mirrors
+  // ProductsScreen.tsx's blockCode/showPinVerify/pinAction pattern. Delete is
+  // the most destructive action on this screen (it also wipes the debtor's
+  // whole history, see the confirmation copy below); subtracting reduces the
+  // recorded debt, which is just as easy to abuse as a delete, so both get
+  // routed through the same PIN protection when blockCode is set. Add is
+  // left ungated — increasing a debt isn't the risk this protects against.
   const blockCode = useAuthStore((s) => s.user?.blockCode ?? null)
   const blockDisabled = isBlockCodeDisabled()
   const [showPinVerify, setShowPinVerify] = useState(false)
   const [pinInput, setPinInput] = useState('')
+  const [pinAction, setPinAction] = useState<'delete' | 'subtract' | null>(null)
+  const [pendingSubtractAmount, setPendingSubtractAmount] = useState<number | null>(null)
 
   useEffect(() => {
     if (showAddModal) {
@@ -321,6 +324,7 @@ export function DebtorsScreen() {
   const handleDeleteConfirm = () => {
     if (saving) return
     if (blockCode && !blockDisabled) {
+      setPinAction('delete')
       setPinInput('')
       setShowPinVerify(true)
       return
@@ -332,22 +336,22 @@ export function DebtorsScreen() {
     if (pinInput === blockCode) {
       setShowPinVerify(false)
       setPinInput('')
-      execDelete()
+      const action = pinAction
+      setPinAction(null)
+      if (action === 'delete') {
+        execDelete()
+      } else if (action === 'subtract' && pendingSubtractAmount !== null) {
+        execAdjust('subtract', pendingSubtractAmount)
+      }
+      setPendingSubtractAmount(null)
     } else {
       showToast("Blok kod noto'g'ri", 'error')
       setPinInput('')
     }
   }
 
-  const handleAdjust = async (type: 'add' | 'subtract') => {
-    if (!selectedDebtor || saving) return
-    setAdjustError('')
-    const amount = parseFormattedAmount(adjustAmount)
-    if (amount <= 0) return
-    if (type === 'subtract' && amount > selectedDebtor.amount) {
-      setAdjustError('O\'chirilayotgan summa qarzdan katta')
-      return
-    }
+  const execAdjust = async (type: 'add' | 'subtract', amount: number) => {
+    if (!selectedDebtor) return
     const adjAmount = type === 'subtract' ? -amount : amount
     setSaving(true)
     try {
@@ -362,6 +366,27 @@ export function DebtorsScreen() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleAdjust = (type: 'add' | 'subtract') => {
+    if (!selectedDebtor || saving) return
+    setAdjustError('')
+    const amount = parseFormattedAmount(adjustAmount)
+    if (amount <= 0) return
+    if (type === 'subtract' && amount > selectedDebtor.amount) {
+      setAdjustError('O\'chirilayotgan summa qarzdan katta')
+      return
+    }
+    // Subtracting reduces recorded debt, so route it through the same PIN
+    // check as Delete when blockCode is set.
+    if (type === 'subtract' && blockCode && !blockDisabled) {
+      setPendingSubtractAmount(amount)
+      setPinAction('subtract')
+      setPinInput('')
+      setShowPinVerify(true)
+      return
+    }
+    execAdjust(type, amount)
   }
 
   const handleAddSave = async () => {
@@ -997,9 +1022,9 @@ export function DebtorsScreen() {
         </div>
       )}
 
-      {/* PIN Verification — gates Delete only, mirroring ProductsScreen.tsx */}
+      {/* PIN Verification — gates Delete and debt subtraction, mirroring ProductsScreen.tsx */}
       {showPinVerify && (
-        <div style={overlay} onClick={() => setShowPinVerify(false)}>
+        <div style={overlay} onClick={() => { setShowPinVerify(false); setPinAction(null); setPendingSubtractAmount(null) }}>
           <div style={{
             background: 'var(--color-surface)',
             borderRadius: 14,
@@ -1012,7 +1037,7 @@ export function DebtorsScreen() {
             <Lock size={32} color="var(--color-warning)" style={{ marginBottom: 12 }} />
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)', marginBottom: 6 }}>Blok kodni kiriting</div>
             <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
-              Qarzdorni o'chirish uchun himoya kodini kiriting
+              {pinAction === 'subtract' ? "Qarzdan ayirish uchun himoya kodini kiriting" : "Qarzdorni o'chirish uchun himoya kodini kiriting"}
             </div>
             <input
               type="password" inputMode="numeric" placeholder="0000" maxLength={4}
@@ -1024,7 +1049,7 @@ export function DebtorsScreen() {
               style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, marginBottom: 16, color: 'var(--color-text)' }}
             />
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setShowPinVerify(false)} style={{ ...btnSecondary, flex: 1 }}>Bekor qilish</button>
+              <button onClick={() => { setShowPinVerify(false); setPinAction(null); setPendingSubtractAmount(null) }} style={{ ...btnSecondary, flex: 1 }}>Bekor qilish</button>
               <button onClick={handleConfirmPin} style={{ ...btnPrimary, flex: 1 }}>Tasdiqlash</button>
             </div>
           </div>

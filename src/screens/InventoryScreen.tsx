@@ -1,17 +1,19 @@
 import { useEffect, useState, useMemo, useCallback, forwardRef } from 'react'
 import { inventoryApi, resolveImageUrl, clearApiCache, getDeviceId } from '../api/client'
 import { useAppStore } from '../store/appStore'
+import { useAuthStore } from '../store/authStore'
+import { isBlockCodeDisabled } from '../utils/blockCode'
 import dayjs from 'dayjs'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
 import {
   ChevronLeft, ChevronRight, Package, Search, Boxes, ShoppingCart, Wallet,
-  TrendingUp, TrendingDown, AlertTriangle, RefreshCw, X,
+  TrendingUp, TrendingDown, AlertTriangle, RefreshCw, X, Lock,
 } from 'lucide-react'
 import { t } from '../i18n'
 import { PageHeader } from '../components/PageHeader'
 import type { Product, InventoryItem, ProductUnit } from '../types'
-import { formatMoney, formatInputAmount, parseFormattedAmount, overlay } from '../styles/shared'
+import { formatMoney, formatInputAmount, parseFormattedAmount, overlay, inputBase, btnPrimary, btnSecondary } from '../styles/shared'
 import { getBusinessDate } from '../utils/businessDay'
 import {
   compareProducts,
@@ -187,6 +189,17 @@ export function InventoryScreen() {
   const [revenueInput, setRevenueInput] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+
+  // Overriding the expected revenue away from what the list price implies is
+  // this screen's equivalent of Sales' per-line price renegotiation — gated
+  // behind the same blockCode PIN, same pattern as Sales/Products/Debtors.
+  // Gates at Save time rather than per-keystroke: nothing here clears
+  // currentQtyInput/revenueInput while the PIN modal is open, so the values
+  // are simply re-read once the code checks out.
+  const blockCode = useAuthStore((s) => s.user?.blockCode ?? null)
+  const blockDisabled = isBlockCodeDisabled()
+  const [showPinVerify, setShowPinVerify] = useState(false)
+  const [pinInput, setPinInput] = useState('')
   // Product ids whose current-quantity edit was applied optimistically and
   // queued for background sync (offline or a network failure mid-save).
   // Derived from the real offline queue via offlineQueue.subscribe() (same
@@ -365,7 +378,7 @@ export function InventoryScreen() {
   const rawQtyInput = selectedEntry ? parseQuantityInput(currentQtyInput, selectedEntry.unit) : 0
   const isOverCount = !!selectedEntry && isEditable && !isPastDate && rawQtyInput > selectedEntry.opening
 
-  const handleSave = async () => {
+  const execSave = async () => {
     if (!selectedEntry || !isEditable) return
     const rawQty = parseQuantityInput(currentQtyInput, selectedEntry.unit)
     // Block save outright when the typed value exceeds the opening
@@ -404,6 +417,36 @@ export function InventoryScreen() {
         throw err
       }
     } catch (err: unknown) { showToast(err instanceof Error ? err.message : t('error'), 'error') } finally { setSaving(false) }
+  }
+
+  const handleSave = () => {
+    if (!selectedEntry || !isEditable || isOverCount) return
+    if (preview?.isOverridden && blockCode && !blockDisabled) {
+      setPinInput('')
+      setShowPinVerify(true)
+      return
+    }
+    execSave()
+  }
+
+  // Deliberately not wrapped in useCallback: it closes over execSave (itself
+  // unmemoized, so it captures the current currentQtyInput/revenueInput on
+  // every render) — memoizing this against a narrower dep list would risk
+  // calling a stale execSave from an earlier render's closure.
+  const confirmPin = () => {
+    if (pinInput === blockCode) {
+      setShowPinVerify(false)
+      setPinInput('')
+      execSave()
+    } else {
+      showToast("Blok kod noto'g'ri", 'error')
+      setPinInput('')
+    }
+  }
+
+  const cancelPin = () => {
+    setShowPinVerify(false)
+    setPinInput('')
   }
 
   const preview = useMemo(() => {
@@ -677,9 +720,15 @@ export function InventoryScreen() {
                   padding: '10px 18px', borderRadius: 8, border: 'none',
                   background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600,
                   cursor: (saving || isOverCount) ? 'not-allowed' : 'pointer', opacity: (saving || isOverCount) ? 0.6 : 1,
-                  display: saved ? 'none' : undefined,
+                  display: saved ? 'none' : 'inline-flex', alignItems: 'center', gap: 6,
                 }}
-              >{saving ? t('loading') : t('save')}</button>
+              >
+                {/* Purely informational, like Sales' confirm button — the
+                    override itself is already PIN-gated in handleSave above,
+                    this just flags in advance that saving will ask for it. */}
+                {p?.isOverridden && <Lock size={14} />}
+                {saving ? t('loading') : t('save')}
+              </button>
             )}
             {saved && <span style={s.savedBadge}>{t('success')}</span>}
           </div>
@@ -727,6 +776,41 @@ export function InventoryScreen() {
         </>
       )}
       {selectedEntry && renderModal()}
+
+      {/* PIN Verification — gates an overridden expected-revenue save when a
+          blockCode is set, mirroring Sales' per-line price gate. */}
+      {showPinVerify && (
+        <div style={overlay} onClick={cancelPin}>
+          <div style={{
+            background: 'var(--color-surface)',
+            borderRadius: 14,
+            padding: 24,
+            width: 380,
+            border: '1px solid var(--color-border)',
+            textAlign: 'center',
+            boxShadow: 'var(--shadow-lg)',
+          }} onClick={(e) => e.stopPropagation()}>
+            <Lock size={32} color="var(--color-warning)" style={{ marginBottom: 12 }} />
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)', marginBottom: 6 }}>Blok kodni kiriting</div>
+            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
+              Tushumni o'zgartirish uchun himoya kodini kiriting
+            </div>
+            <input
+              type="password" inputMode="numeric" placeholder="0000" maxLength={4}
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              onKeyDown={(e) => { if (e.key === 'Enter' && pinInput.length === 4) confirmPin() }}
+              onFocus={(e) => e.target.select()}
+              autoFocus
+              style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, marginBottom: 16, color: 'var(--color-text)' }}
+            />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={cancelPin} style={{ ...btnSecondary, flex: 1 }}>Bekor qilish</button>
+              <button onClick={confirmPin} style={{ ...btnPrimary, flex: 1 }}>Tasdiqlash</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 

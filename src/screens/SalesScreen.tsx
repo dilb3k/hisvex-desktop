@@ -1,10 +1,12 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useAppStore } from '../store/appStore'
+import { useAuthStore } from '../store/authStore'
 import { inventoryApi, resolveImageUrl, getDeviceId, clearApiCache } from '../api/client'
 import { isOnline, isNetworkError } from '../utils/network'
+import { isBlockCodeDisabled } from '../utils/blockCode'
 import { enqueue, getQueueSnapshot, subscribe as subscribeQueue } from '../store/offlineQueue'
 import type { QueuedInventory } from '../store/offlineQueue'
-import { Check, Minus, Plus, Package, Scan, Search, ShoppingBag, Tag, X, Wallet, ShoppingCart, Trash2, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Check, Minus, Plus, Package, Scan, Search, ShoppingBag, Tag, X, Wallet, ShoppingCart, Trash2, AlertTriangle, RefreshCw, Lock } from 'lucide-react'
 import { t } from '../i18n'
 import type { InventoryItem, Product } from '../types'
 import { getBusinessDate } from '../utils/businessDay'
@@ -23,7 +25,7 @@ import {
   normalizeQuantityInput,
   parseQuantityInput,
 } from '../utils/inventory'
-import { formatInputAmount, parseFormattedAmount } from '../styles/shared'
+import { overlay, inputBase, btnPrimary, btnSecondary, formatInputAmount, parseFormattedAmount } from '../styles/shared'
 
 // Loading skeleton — content-shaped placeholders (search bar + hint + card
 // list) instead of a bare spinner, matching the pattern already established
@@ -94,6 +96,18 @@ export function SalesScreen() {
   // committed value so a half-typed "12" never becomes the charged price.
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({})
   const [qtyDrafts, setQtyDrafts] = useState<Record<string, string>>({})
+
+  // PIN gate for renegotiating a line's price — mirrors ProductsScreen.tsx's
+  // blockCode/showPinVerify pattern. Only an actual change to the charged
+  // price is gated (a blur that leaves the price untouched commits straight
+  // through), and the pending edit is applied via the same commitPrice used
+  // for the unprotected path once the PIN is confirmed.
+  const blockCode = useAuthStore((s) => s.user?.blockCode ?? null)
+  const blockDisabled = isBlockCodeDisabled()
+  const [showPinVerify, setShowPinVerify] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pendingPriceEdit, setPendingPriceEdit] = useState<{ productId: string; raw: string; listPrice: number } | null>(null)
+
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [showBarcode, setShowBarcode] = useState(false)
@@ -220,6 +234,11 @@ export function SalesScreen() {
     [cartArray],
   )
 
+  // Only ever non-empty for a line whose price was explicitly changed away
+  // from list (see commitPrice) — flags the confirm button below so the
+  // cashier sees at a glance that this sale carries a renegotiated price.
+  const hasPriceOverride = Object.keys(priceOverrides).length > 0
+
   // Dropping a line has to clear everything keyed off it, not just the
   // quantity — otherwise re-adding the product would silently resurrect the
   // previous negotiated price.
@@ -295,6 +314,52 @@ export function SalesScreen() {
     }
     setPriceOverrides(prev => ({ ...prev, [productId]: roundMoney(Math.max(parsed, 0)) }))
   }, [])
+
+  // Gates an actual price change behind the block-code PIN when one is set;
+  // an edit that resolves to the price already charged (e.g. a no-op blur)
+  // still runs commitPrice directly so drafts get cleared normally.
+  const commitPriceGuarded = useCallback((productId: string, raw: string, listPrice: number, currentPrice: number) => {
+    const parsed = parseFormattedAmount(raw)
+    const nextPrice = (!raw.trim() || parsed === listPrice) ? listPrice : roundMoney(Math.max(parsed, 0))
+    if (nextPrice === currentPrice) {
+      commitPrice(productId, raw, listPrice)
+      return
+    }
+    if (blockCode && !blockDisabled) {
+      setPendingPriceEdit({ productId, raw, listPrice })
+      setPinInput('')
+      setShowPinVerify(true)
+      return
+    }
+    commitPrice(productId, raw, listPrice)
+  }, [blockCode, blockDisabled, commitPrice])
+
+  const handleCancelPin = useCallback(() => {
+    setShowPinVerify(false)
+    setPinInput('')
+    if (pendingPriceEdit) {
+      // Revert the half-typed draft so the field snaps back to the price
+      // actually charged instead of showing the rejected edit.
+      setPriceDrafts(prev => {
+        const { [pendingPriceEdit.productId]: _removed, ...rest } = prev
+        return rest
+      })
+    }
+    setPendingPriceEdit(null)
+  }, [pendingPriceEdit])
+
+  const handleConfirmPin = useCallback(() => {
+    if (pinInput === blockCode) {
+      setShowPinVerify(false)
+      setPinInput('')
+      const pending = pendingPriceEdit
+      setPendingPriceEdit(null)
+      if (pending) commitPrice(pending.productId, pending.raw, pending.listPrice)
+    } else {
+      showToast("Blok kod noto'g'ri", 'error')
+      setPinInput('')
+    }
+  }, [pinInput, blockCode, pendingPriceEdit, commitPrice, showToast])
 
   const resetPrice = useCallback((productId: string) => {
     setPriceOverrides(prev => {
@@ -838,7 +903,7 @@ export function SalesScreen() {
                             ...prev,
                             [item.productId]: formatInputAmount(e.target.value),
                           }))}
-                          onBlur={(e) => commitPrice(item.productId, e.target.value, listPrice)}
+                          onBlur={(e) => commitPriceGuarded(item.productId, e.target.value, listPrice, price)}
                           onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                           style={{
                             ...smallInput,
@@ -1115,11 +1180,49 @@ export function SalesScreen() {
               cursor: totalPieces === 0 || submitting ? 'not-allowed' : 'pointer',
             }}
           >
-            <Check size={17} />
+            {/* Purely informational — the price change itself was already
+                PIN-gated the moment it was typed (commitPriceGuarded above),
+                this just flags in advance that this sale carries one. */}
+            {hasPriceOverride ? <Lock size={17} /> : <Check size={17} />}
             <span>{submitting ? t('loading') : t('confirmSale')}</span>
           </button>
         </div>
       </div>
+
+      {/* PIN Verification — gates a per-line price renegotiation, mirroring
+          ProductsScreen.tsx's blockCode/showPinVerify pattern. */}
+      {showPinVerify && (
+        <div style={overlay} onClick={handleCancelPin}>
+          <div style={{
+            background: 'var(--color-surface)',
+            borderRadius: 14,
+            padding: 24,
+            width: 380,
+            border: '1px solid var(--color-border)',
+            textAlign: 'center',
+            boxShadow: 'var(--shadow-lg)',
+          }} onClick={(e) => e.stopPropagation()}>
+            <Lock size={32} color="var(--color-warning)" style={{ marginBottom: 12 }} />
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text)', marginBottom: 6 }}>Blok kodni kiriting</div>
+            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
+              Narxni o'zgartirish uchun himoya kodini kiriting
+            </div>
+            <input
+              type="password" inputMode="numeric" placeholder="0000" maxLength={4}
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              onKeyDown={(e) => { if (e.key === 'Enter' && pinInput.length === 4) handleConfirmPin() }}
+              onFocus={(e) => e.target.select()}
+              autoFocus
+              style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, marginBottom: 16, color: 'var(--color-text)' }}
+            />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={handleCancelPin} style={{ ...btnSecondary, flex: 1 }}>Bekor qilish</button>
+              <button onClick={handleConfirmPin} style={{ ...btnPrimary, flex: 1 }}>Tasdiqlash</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
