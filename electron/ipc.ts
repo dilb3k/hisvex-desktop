@@ -54,6 +54,16 @@ export function initIpcHandlers(ipcMain: IpcMain, store: Store): void {
     store.set('refreshToken', encryptSecret(refreshToken))
   })
   ipcMain.handle('store:clearRefreshToken', () => store.set('refreshToken', ''))
+  // Token this device held right before another device logged into the
+  // same account and got it kicked (see SESSION_REPLACED in api/client.ts).
+  // Kept separately from 'token' so the normal login/logout lifecycle never
+  // touches it — only the phone-verification screen's read-only "view
+  // products" link uses it, and only until it naturally expires.
+  ipcMain.handle('store:getStaleToken', () => decryptSecret(store.get('staleToken', '') as string))
+  ipcMain.handle('store:setStaleToken', (_event, token: string) => {
+    store.set('staleToken', encryptSecret(token))
+  })
+  ipcMain.handle('store:clearStaleToken', () => store.set('staleToken', ''))
   ipcMain.handle('store:getUser', () => store.get('user', {}))
   ipcMain.handle('store:setUser', (_event, user: unknown) => store.set('user', user))
   ipcMain.handle('store:clearUser', () => store.set('user', {}))

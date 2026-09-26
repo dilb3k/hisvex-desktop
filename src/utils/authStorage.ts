@@ -52,6 +52,29 @@ export async function clearStoredRefreshToken(): Promise<void> {
   } catch {}
 }
 
+// See electron/ipc.ts's store:*StaleToken — kept apart from the normal
+// token so the phone-verification screen's read-only "view products" link
+// can use it even after the live session was replaced elsewhere.
+export async function getStoredStaleToken(): Promise<string> {
+  try {
+    return (await window.electronAPI?.getStaleToken?.()) || ''
+  } catch {
+    return ''
+  }
+}
+
+export async function setStoredStaleToken(token: string): Promise<void> {
+  try {
+    await window.electronAPI?.setStaleToken?.(token)
+  } catch {}
+}
+
+export async function clearStoredStaleToken(): Promise<void> {
+  try {
+    await window.electronAPI?.clearStaleToken?.()
+  } catch {}
+}
+
 export async function getStoredUser(): Promise<User | null> {
   try {
     const raw = await window.electronAPI?.getUser?.()

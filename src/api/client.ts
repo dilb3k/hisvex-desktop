@@ -20,7 +20,7 @@ import type {
 // the app to the old server.
 import { API_BASE_URL } from '../constants'
 import { getBusinessDate } from '../utils/businessDay'
-import { setStoredToken, setStoredRefreshToken } from '../utils/authStorage'
+import { setStoredToken, setStoredRefreshToken, setStoredStaleToken } from '../utils/authStorage'
 
 interface InventoryResponse {
   items: InventoryItem[]
@@ -89,14 +89,28 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 let refreshPromise: Promise<'ok' | 'failed'> | null = null
 
 function handleSessionExpired(
-  error: AxiosError<{ success?: boolean; error?: { message?: string; details?: unknown }; message?: string }>,
+  error: AxiosError<{ success?: boolean; error?: { message?: string; details?: unknown; code?: string }; message?: string }>,
 ): Error {
+  const data = error.response?.data
+  const code =
+    data && typeof data === 'object' && 'error' in data && data.error && typeof data.error === 'object'
+      ? (data.error as { code?: string }).code
+      : undefined
+
+  // This device got kicked because another device logged into the same
+  // account — the token is dead for every normal call, but the server
+  // still honors it (authenticate({ allowStale: true })) for the read-only
+  // product/stock preview on the phone-verification screen. Stash it
+  // before clearSession (below) wipes the live token.
+  if (code === 'SESSION_REPLACED' && apiToken) {
+    void setStoredStaleToken(apiToken)
+  }
+
   // Token/refreshToken/user clearing is owned by the shared session-clear
   // function (authStore.ts's clearSession), invoked via unauthorizedHandler
   // below — this avoids duplicating auth-persistence clearing logic here.
   unauthorizedHandler?.()
   window.location.hash = '#/login'
-  const data = error.response?.data
   if (data && typeof data === 'object') {
     if ('error' in data && data.error && typeof data.error === 'object' && 'message' in data.error && typeof data.error.message === 'string') {
       return new Error(data.error.message)
@@ -217,6 +231,16 @@ export const authApi = {
   getMe: () => api.get<User>('/auth/me'),
 
   updateMe: (data: Partial<User>) => api.put('/auth/me', data),
+
+  // Read-only product/stock list for the phone-verification screen's "view
+  // products" link. Takes the stale token explicitly rather than relying on
+  // apiToken — same reasoning as logout()'s explicit token above: this call
+  // happens precisely when this device is NOT the authenticated one.
+  fetchProductPreview: (staleToken: string) =>
+    api.get<{ productId: string; name: string; unit: string; sellPrice: number; currentQuantity: number }[]>(
+      '/inventory-preview',
+      { headers: { Authorization: `Bearer ${staleToken}` } },
+    ),
 }
 
 export const productsApi = {
