@@ -19,9 +19,30 @@ import fs from 'node:fs'
 // "nothing stored". That's a deliberate, graceful degrade: the app prompts
 // a normal re-login / block-code re-setup instead of crashing or trying to
 // use garbled data as a bearer token.
+// Logged at most once per process, not once per read/write — encryptSecret/
+// decryptSecret are called on every token access, and this condition (no OS
+// keychain/keyring backing safeStorage) is a machine-level fact that doesn't
+// change mid-session, so repeating the warning would just be console noise
+// that buries the one time it actually matters: someone auditing why a
+// credential ended up in the store as plain text on this machine.
+let warnedNoSafeStorage = false
+function warnNoSafeStorageOnce(): void {
+  if (warnedNoSafeStorage) return
+  warnedNoSafeStorage = true
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[hisvex] safeStorage encryption is unavailable on this machine (no OS keychain/DPAPI/keyring backend found). ' +
+    'Auth tokens and the block-code PIN are falling back to electron-store\'s static-key encryption only, ' +
+    'which is the same fixed key shipped in every install and offers no real per-device protection.',
+  )
+}
+
 function encryptSecret(value: string): string {
   if (!value) return ''
-  if (!safeStorage.isEncryptionAvailable()) return value
+  if (!safeStorage.isEncryptionAvailable()) {
+    warnNoSafeStorageOnce()
+    return value
+  }
   try {
     return safeStorage.encryptString(value).toString('base64')
   } catch {
@@ -31,7 +52,10 @@ function encryptSecret(value: string): string {
 
 function decryptSecret(stored: string): string {
   if (!stored) return ''
-  if (!safeStorage.isEncryptionAvailable()) return stored
+  if (!safeStorage.isEncryptionAvailable()) {
+    warnNoSafeStorageOnce()
+    return stored
+  }
   try {
     return safeStorage.decryptString(Buffer.from(stored, 'base64'))
   } catch {
