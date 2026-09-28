@@ -258,6 +258,20 @@ export const productsApi = {
     api.patch<Product>(`/products/${id}/restock`, { quantity }),
 
   delete: (id: string) => api.delete(`/products/${id}`),
+
+  // New R2-backed upload path (see backend's product.controller.ts). Sends
+  // multipart/form-data with field name `image`, matching the server's
+  // multer config. Response unwraps (via the response interceptor above) to
+  // `{ product }`, with `product.imageUrl` populated. Errors: 422 (invalid/
+  // missing file), 413 (>10MB), 503 (R2 not configured) — surfaced as plain
+  // Error messages by the shared response interceptor, same as any other call.
+  uploadProductImage: (id: string, file: File | Blob) => {
+    const formData = new FormData()
+    formData.append('image', file)
+    return api.post<{ product: Product }>(`/products/${id}/image`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 }
 
 let deviceId = ''
@@ -372,6 +386,21 @@ export function resolveImageUrl(image?: string, imageHash?: string): string | un
     return `${API_BASE_URL}/products/image/${src}`
   }
   return undefined
+}
+
+/**
+ * Single source of truth for "what image do we show for this product".
+ * Prefers the new R2-backed `imageUrl` (set once a product's image has been
+ * uploaded via productsApi.uploadProductImage / the legacy base64 JSON path
+ * on the new backend); falls back to the legacy `image`/`imageHash` resolver
+ * for products that predate the R2 migration or were never re-saved.
+ */
+export function getProductImageSrc(
+  product?: { image?: string; imageHash?: string; imageUrl?: string | null } | null,
+): string | undefined {
+  if (!product) return undefined
+  if (product.imageUrl) return product.imageUrl
+  return resolveImageUrl(product.image, product.imageHash)
 }
 
 export default api

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useAppStore } from '../store/appStore'
 import { useAuthStore } from '../store/authStore'
-import { inventoryApi, resolveImageUrl, getDeviceId, clearApiCache } from '../api/client'
+import { inventoryApi, getProductImageSrc, getDeviceId, clearApiCache } from '../api/client'
 import { isOnline, isNetworkError } from '../utils/network'
 import { isBlockCodeDisabled } from '../utils/blockCode'
 import { enqueue, getQueueSnapshot, subscribe as subscribeQueue } from '../store/offlineQueue'
@@ -732,9 +732,9 @@ export function SalesScreen() {
                       flexShrink: 0,
                       overflow: 'hidden',
                     }}>
-                      {(product?.image || product?.imageHash) ? (
+                      {(product?.imageUrl || product?.image || product?.imageHash) ? (
                         <img
-                          src={resolveImageUrl(product.image, product.imageHash)}
+                          src={getProductImageSrc(product)}
                           alt=""
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         />

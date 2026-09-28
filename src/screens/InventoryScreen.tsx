@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, forwardRef } from 'react'
-import { inventoryApi, resolveImageUrl, clearApiCache, getDeviceId } from '../api/client'
+import { inventoryApi, getProductImageSrc, clearApiCache, getDeviceId } from '../api/client'
 import { useAppStore } from '../store/appStore'
 import { useAuthStore } from '../store/authStore'
 import { isBlockCodeDisabled } from '../utils/blockCode'
@@ -178,6 +178,11 @@ export function InventoryScreen() {
   const catalogIsEmpty = useAppStore((s) => s.products.length === 0)
   const [selectedDate, setSelectedDate] = useState(getBusinessDate)
   const [search, setSearch] = useState('')
+  // Debounced the same way ProductsScreen's search is: filtering itself is
+  // cheap (in-memory array), but typing fast re-runs the useMemo below and
+  // re-renders the whole filtered list on every keystroke, which is visible
+  // jank once a catalog has a few hundred entries.
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [fetchError, setFetchError] = useState(false)
   const [items, setItems] = useState<InventoryItem[]>([])
@@ -266,11 +271,16 @@ export function InventoryScreen() {
     return result
   }, [items])
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(timer)
+  }, [search])
+
   const filteredItems = useMemo(() => {
-    if (!search.trim()) return combinedData
-    const q = search.toLowerCase()
+    if (!debouncedSearch.trim()) return combinedData
+    const q = debouncedSearch.toLowerCase()
     return combinedData.filter((e) => e.product.name.toLowerCase().includes(q))
-  }, [combinedData, search])
+  }, [combinedData, debouncedSearch])
 
   const totals = useMemo(() => {
     let start = 0, remaining = 0, sold = 0, revenue = 0, profit = 0
@@ -545,8 +555,8 @@ export function InventoryScreen() {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
           <div style={{ width: 56, height: 56, borderRadius: 10, background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-            {(entry.product.image || entry.product.imageHash) ? (
-              <img src={resolveImageUrl(entry.product.image, entry.product.imageHash)} alt={entry.product.name} style={{ width: '100%', height: '100%', borderRadius: 10, objectFit: 'cover' }} />
+            {(entry.product.imageUrl || entry.product.image || entry.product.imageHash) ? (
+              <img src={getProductImageSrc(entry.product)} alt={entry.product.name} style={{ width: '100%', height: '100%', borderRadius: 10, objectFit: 'cover' }} />
             ) : (
               <Package size={26} color="var(--color-text-tertiary)" />
             )}
@@ -585,8 +595,8 @@ export function InventoryScreen() {
         <div style={s.modal} onClick={(e) => e.stopPropagation()}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
             <div style={{ width: 56, height: 56, borderRadius: 10, background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-              {(selectedEntry.product.image || selectedEntry.product.imageHash) ? (
-                <img src={resolveImageUrl(selectedEntry.product.image, selectedEntry.product.imageHash)} alt={selectedEntry.product.name} style={{ width: '100%', height: '100%', borderRadius: 10, objectFit: 'cover' }} />
+              {(selectedEntry.product.imageUrl || selectedEntry.product.image || selectedEntry.product.imageHash) ? (
+                <img src={getProductImageSrc(selectedEntry.product)} alt={selectedEntry.product.name} style={{ width: '100%', height: '100%', borderRadius: 10, objectFit: 'cover' }} />
               ) : (
                 <Package size={26} color="var(--color-text-tertiary)" />
               )}

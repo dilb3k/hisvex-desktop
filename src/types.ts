@@ -48,6 +48,8 @@ export interface Product {
   buyPrice?: number
   sellPrice?: number
   image?: string
+  /** R2-backed image URL (new contract) — prefer this over `image`/`imageHash` when present. */
+  imageUrl?: string | null
   displayIndex?: number
   barcodes?: string[]
   category?: string

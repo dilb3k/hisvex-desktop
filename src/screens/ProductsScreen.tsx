@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useAppStore } from '../store/appStore'
 import { useAuthStore } from '../store/authStore'
-import { productsApi, resolveImageUrl, getDeviceId, clearApiCache } from '../api/client'
+import { productsApi, resolveImageUrl, getProductImageSrc, getDeviceId, clearApiCache } from '../api/client'
 import { Package, Plus, Search, Pencil, Lock, AlertTriangle, Trash2, X, Wallet, RefreshCw } from 'lucide-react'
 import { t } from '../i18n'
 import { PageHeader } from '../components/PageHeader'
@@ -774,9 +774,9 @@ export function ProductsScreen() {
                     overflow: 'hidden',
                     flexShrink: 0,
                   }}>
-                    {(item.image || item.imageHash) ? (
+                    {(item.imageUrl || item.image || item.imageHash) ? (
                       <img
-                        src={resolveImageUrl(item.image, item.imageHash)}
+                        src={getProductImageSrc(item)}
                         alt=""
                         style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                         loading="lazy"
@@ -1241,8 +1241,8 @@ export function ProductsScreen() {
                   width: 52, height: 52, borderRadius: 10, background: 'var(--color-bg)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0,
                 }}>
-                  {(restockProduct.image || restockProduct.imageHash) ? (
-                    <img src={resolveImageUrl(restockProduct.image, restockProduct.imageHash)} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  {(restockProduct.imageUrl || restockProduct.image || restockProduct.imageHash) ? (
+                    <img src={getProductImageSrc(restockProduct)} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                   ) : (
                     <Package size={24} color="var(--color-text-tertiary)" />
                   )}
