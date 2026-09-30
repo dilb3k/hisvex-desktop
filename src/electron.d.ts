@@ -29,6 +29,8 @@ interface ElectronAPI {
   isWindows: () => boolean
   saveCsv: (defaultName: string, content: string) => Promise<{ saved: true; filePath: string } | { saved: false }>
   openExternal: (url: string) => Promise<boolean>
+  safeStorageEncrypt: (plaintext: string) => Promise<string>
+  safeStorageDecrypt: (stored: string) => Promise<string>
 }
 
 interface Window {

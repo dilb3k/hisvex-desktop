@@ -1211,7 +1211,10 @@ export function SalesScreen() {
               type="password" inputMode="numeric" placeholder="0000" maxLength={4}
               value={pinInput}
               onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              onKeyDown={(e) => { if (e.key === 'Enter' && pinInput.length === 4) handleConfirmPin() }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && pinInput.length === 4) handleConfirmPin()
+                if (e.key === 'Escape') handleCancelPin()
+              }}
               onFocus={(e) => e.target.select()}
               autoFocus
               style={{ ...inputBase, textAlign: 'center', fontSize: 20, letterSpacing: 6, marginBottom: 16, color: 'var(--color-text)' }}

@@ -106,6 +106,47 @@ export function initIpcHandlers(ipcMain: IpcMain, store: Store): void {
   )
   ipcMain.handle('app:getVersion', () => app.getVersion())
 
+  // Generic safeStorage passthrough for the renderer's own localStorage-backed
+  // data (the offline sync queue — see src/store/offlineQueue.ts) that isn't
+  // an electron-store key itself: the renderer owns where/how it persists the
+  // ciphertext, this just does the OS-level encrypt/decrypt safeStorage can
+  // only perform from the main process.
+  //
+  // Deliberately NOT reusing encryptSecret/decryptSecret above: those return
+  // '' on a decrypt failure, which is correct for a credential (garbled ==
+  // "nothing stored", prompt a re-login) but wrong here — a queue entry
+  // written *before* this encryption existed is plain JSON, not ciphertext,
+  // so decrypting it throws, and the renderer needs the original string back
+  // (to parse as plain JSON) rather than an empty one that would look like a
+  // legitimately-decrypted "no data" and silently drop a pending sale.
+  ipcMain.handle('safeStorage:encrypt', (_event, plaintext: string) => {
+    if (!plaintext) return plaintext
+    if (!safeStorage.isEncryptionAvailable()) {
+      warnNoSafeStorageOnce()
+      return plaintext
+    }
+    try {
+      return safeStorage.encryptString(plaintext).toString('base64')
+    } catch {
+      return plaintext
+    }
+  })
+  ipcMain.handle('safeStorage:decrypt', (_event, stored: string) => {
+    if (!stored) return stored
+    if (!safeStorage.isEncryptionAvailable()) {
+      warnNoSafeStorageOnce()
+      return stored
+    }
+    try {
+      return safeStorage.decryptString(Buffer.from(stored, 'base64'))
+    } catch {
+      // Not valid ciphertext under this OS key — most likely a pre-encryption
+      // plaintext blob. Hand it back unchanged so the caller can fall back
+      // to treating it as plain JSON instead of losing it.
+      return stored
+    }
+  })
+
   ipcMain.handle('block:get', () => decryptBlockCode(store.get('blockCode', '') as string))
   ipcMain.handle('block:set', (_event, code: string) => {
     store.set('blockCode', encryptSecret(code))

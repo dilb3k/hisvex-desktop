@@ -179,6 +179,24 @@ export function DebtorsScreen() {
   const [pinAction, setPinAction] = useState<'delete' | 'subtract' | null>(null)
   const [pendingSubtractAmount, setPendingSubtractAmount] = useState<number | null>(null)
 
+  // Esc closes whichever modal is topmost — mirrors the click-outside-to-
+  // close every modal already has via its overlay's onClick, just for the
+  // keyboard. Checked in open-from-within-another order (delete confirm and
+  // PIN verify, and edit, are opened from on top of the detail modal) so Esc
+  // dismisses one layer at a time instead of all of them at once.
+  useEffect(() => {
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (showDeleteConfirm) setShowDeleteConfirm(false)
+      else if (showPinVerify) { setShowPinVerify(false); setPinAction(null); setPendingSubtractAmount(null) }
+      else if (showEditModal) setShowEditModal(false)
+      else if (showDetailModal) setShowDetailModal(false)
+      else if (showAddModal) setShowAddModal(false)
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [showDeleteConfirm, showPinVerify, showEditModal, showDetailModal, showAddModal])
+
   useEffect(() => {
     if (showAddModal) {
       setAddName('')

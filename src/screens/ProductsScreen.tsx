@@ -240,6 +240,24 @@ export function ProductsScreen() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Esc closes whichever modal is topmost — mirrors the click-outside-to-
+  // close every modal below already has via its overlay's onClick, just for
+  // the keyboard. Checked in open-from-within-another order (delete confirm
+  // and PIN verify are both opened from on top of the product form) so Esc
+  // dismisses one layer at a time instead of all of them at once.
+  useEffect(() => {
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (showDeleteModal) setShowDeleteModal(false)
+      else if (showPinVerify) setShowPinVerify(false)
+      else if (showBarcodeInput) setShowBarcodeInput(false)
+      else if (showRestockModal) closeRestockModal()
+      else if (showModal) closeProductModal()
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [showDeleteModal, showPinVerify, showBarcodeInput, showRestockModal, showModal])
+
   // loadProducts() (appStore) swallows its own fetch errors into the shared
   // `error` field rather than throwing, so a genuine fetch failure and "no
   // products yet" would otherwise render identically. After the awaited

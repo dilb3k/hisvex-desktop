@@ -48,6 +48,8 @@ const electronAPI = {
       { saved: true; filePath: string } | { saved: false }
     >,
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url) as Promise<boolean>,
+  safeStorageEncrypt: (plaintext: string) => ipcRenderer.invoke('safeStorage:encrypt', plaintext) as Promise<string>,
+  safeStorageDecrypt: (stored: string) => ipcRenderer.invoke('safeStorage:decrypt', stored) as Promise<string>,
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)
