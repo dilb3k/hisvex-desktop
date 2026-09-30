@@ -304,6 +304,15 @@ export const authApi = {
   loginWithPhone: (username: string, password: string, phone_number: string) =>
     api.post<AuthSuccess>('/auth/login/verify-phone', { username, password, phone_number, deviceId: getDeviceId() }),
 
+  // Completes the AuthOtpChallenge path login() can now return — see
+  // types.ts. Success shape is identical to a normal login.
+  verifySessionChallenge: (sessionChallengeId: string, otpCode: string) =>
+    api.post<AuthSuccess>('/auth/verify-session-challenge', {
+      sessionChallengeId,
+      otpCode,
+      deviceId: getDeviceId(),
+    }),
+
   register: (username: string, password: string, phone_number?: string, businessDayStartHour?: number) =>
     api.post<AuthSuccess>('/auth/register', {
       username,

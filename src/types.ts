@@ -34,7 +34,18 @@ export interface AuthPhoneVerification {
   message?: string
 }
 
-export type AuthResponse = AuthSuccess | AuthPhoneVerification
+// Returned instead of AuthPhoneVerification when the account has Telegram
+// linked — a real single-use, time-limited code sent via hisvex-bot DM,
+// rather than re-typing the account's own (knowable) phone number. See
+// POST /auth/verify-session-challenge.
+export interface AuthOtpChallenge {
+  requiresVerification: true
+  verificationType: 'PHONE_OTP'
+  sessionChallengeId: string
+  message?: string
+}
+
+export type AuthResponse = AuthSuccess | AuthPhoneVerification | AuthOtpChallenge
 
 export type ProductUnit = 'dona' | 'kg'
 
