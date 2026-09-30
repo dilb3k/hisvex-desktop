@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
+import { OfflineBanner } from './OfflineBanner'
 import { useAppStore } from '../store/appStore'
 import { X, AlertTriangle, CheckCircle, Info } from 'lucide-react'
 
@@ -16,6 +17,7 @@ export function AppLayout() {
         overflow: 'hidden',
         background: 'var(--color-bg)',
       }}>
+        <OfflineBanner />
         {error && (
           <div
             className="animate-slideUp"

@@ -433,6 +433,7 @@ export const translations = {
     syncSuccessToast: 'Sinxronlash muvaffaqiyatli yakunlandi',
     syncFailedToast: 'Sinxronlash muvaffaqiyatsiz tugadi',
     syncOfflineTooltip: "Internet aloqasi yo'q, sinxronlash mumkin emas",
+    dbOfflineBanner: "Tarmoq/Baza bilan vaqtincha uzilish: Ma'lumotlar lokal xotiraga xavfsiz saqlandi, aloqa tiklanishi bilan sinxronlanadi",
 
     // Update-available modal
     updateAvailableTitle: 'Yangi versiya chiqdi',
@@ -873,6 +874,7 @@ export const translations = {
     syncSuccessToast: 'Синхронизация успешно завершена',
     syncFailedToast: 'Не удалось синхронизировать',
     syncOfflineTooltip: 'Нет подключения к интернету, синхронизация недоступна',
+    dbOfflineBanner: 'Временный разрыв связи с сетью/базой: данные надёжно сохранены локально и синхронизируются при восстановлении соединения',
 
     // Update-available modal
     updateAvailableTitle: 'Доступна новая версия',

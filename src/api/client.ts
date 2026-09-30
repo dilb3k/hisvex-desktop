@@ -38,6 +38,26 @@ function activeApiBaseUrl(): string {
   return isPrimaryDown ? API_BACKUP_URL : API_BASE_URL
 }
 
+// Best-effort Telegram alert relay (backend's alertService) — the backend
+// itself can't reliably alert on its own outage (no process running to send
+// from while it's down), so the client reports what it just observed to
+// whichever server is now the active one. Never awaited by a caller and
+// never allowed to affect the failover flow it's reporting on: a failed
+// alert call is just silently dropped.
+function reportFailoverEvent(event: 'failover' | 'recovered', from: string, to: string): void {
+  if (!apiToken) return
+  const targetBase = event === 'failover' ? API_BACKUP_URL : API_BASE_URL
+  void rawAxios
+    .post(
+      `${targetBase}/ops/failover`,
+      { event, from, to },
+      { timeout: 5000, headers: { Authorization: `Bearer ${apiToken}` } },
+    )
+    .catch(() => {
+      // Best-effort — the admin misses one Telegram message, nothing else.
+    })
+}
+
 // Once failed over, ping Railway's own /health directly (not through the
 // `api` instance below — that would just get redirected to Render by the
 // same interceptor that caused the failover) every 3 minutes. Stops itself
@@ -52,6 +72,7 @@ function scheduleHealthRecheck() {
         isPrimaryDown = false
         if (healthRecheckTimer) { clearInterval(healthRecheckTimer); healthRecheckTimer = null }
         console.log('[api] Primary (Railway) is back — switching off Render.')
+        reportFailoverEvent('recovered', 'render', 'railway')
       }
     } catch {
       // Still down — try again next tick.
@@ -211,6 +232,7 @@ api.interceptors.response.use(
         isPrimaryDown = true
         scheduleHealthRecheck()
         console.warn('[api] Primary (Railway) unreachable — failing over to Render for this and subsequent requests.')
+        reportFailoverEvent('failover', 'railway', 'render')
       }
       originalRequest.baseURL = API_BACKUP_URL
       return api(originalRequest)
