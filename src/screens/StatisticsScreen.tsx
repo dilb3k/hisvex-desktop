@@ -109,7 +109,7 @@ const CARD: React.CSSProperties = {
 }
 
 const STAT_LABEL: React.CSSProperties = {
-  fontSize: 12,
+  fontSize: 14,
   color: 'var(--color-text-secondary)',
   margin: 0,
   marginBottom: 4,
@@ -117,7 +117,7 @@ const STAT_LABEL: React.CSSProperties = {
 }
 
 const STAT_VALUE: React.CSSProperties = {
-  fontSize: 20,
+  fontSize: 24,
   fontWeight: 700,
   margin: 0,
   fontVariantNumeric: 'tabular-nums',
@@ -282,7 +282,11 @@ const s = {
   dateLabelText: { fontSize: 15, fontWeight: 700, color: '#fff' },
   dateHintText: { fontSize: 11, color: 'rgba(255,255,255,0.7)' },
   spinnerWrap: { display: 'flex' as const, flexDirection: 'column' as const, alignItems: 'center' as const, justifyContent: 'center' as const, padding: 60, gap: 12 },
-  statItem: { width: '50%', marginBottom: 16 },
+  // Grid, not flex+percentage-width: guarantees exactly 2 per row regardless
+  // of content width, so related pairs (sotiladigan/sotilgan dona,
+  // sotish/sotilgan qiymat, ...) always land side by side on their own row
+  // rather than however flex-wrap happens to pack them.
+  statItem: {},
   cardTitle: { fontSize: 15, fontWeight: 700, margin: 0, marginBottom: 12 },
   cardSubtitle: { fontSize: 11, color: 'var(--color-text-secondary)', marginTop: -8, marginBottom: 12 },
   cardBlacklist: { ...CARD, borderColor: 'rgba(239,68,68,0.33)', background: 'rgba(239,68,68,0.03)' },
@@ -329,7 +333,7 @@ const s = {
     background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 700,
     cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1, width: 'calc(100% - 40px)',
   }),
-  statsGrid: { display: 'flex' as const, flexWrap: 'wrap' as const } as React.CSSProperties,
+  statsGrid: { display: 'grid' as const, gridTemplateColumns: 'repeat(2, 1fr)', columnGap: 24, rowGap: 18 } as React.CSSProperties,
 
   // Error banner — mirrors AppLayout's global error-banner treatment
   // (AlertTriangle + danger-soft background) so this screen's error state
