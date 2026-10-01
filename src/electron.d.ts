@@ -1,4 +1,5 @@
 interface ElectronAPI {
+  requestBackend:(request:unknown)=>Promise<{networkError?:boolean;timeout?:boolean;status?:number;statusText?:string;headers?:Record<string,string>;data?:string}>
   getToken: () => Promise<string>
   setToken: (token: string) => Promise<void>
   clearToken: () => Promise<void>

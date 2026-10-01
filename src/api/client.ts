@@ -1,3 +1,4 @@
+import { nativeBackendAdapter } from "./nativeAdapter";
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import rawAxios from 'axios'
 import type {
@@ -18,9 +19,12 @@ import type {
 // their own copy of the same fallback URL, so pointing the app at a different
 // backend meant editing two places, and missing one would quietly send half
 // the app to the old server.
+import { getActiveUser } from '../store/offlineQueue'
 import { API_BASE_URL, API_BACKUP_URL } from '../constants'
 import { getBusinessDate } from '../utils/businessDay'
 import { setStoredToken, setStoredRefreshToken, setStoredStaleToken } from '../utils/authStorage'
+
+if(typeof window!=='undefined'&&window.electronAPI?.requestBackend) axios.defaults.adapter=nativeBackendAdapter
 
 interface InventoryResponse {
   items: InventoryItem[]
@@ -103,12 +107,19 @@ function isHeavyRequest(config: InternalAxiosRequestConfig): boolean {
   return url.includes('/snapshots') || url.includes('/inventory/range') || url.includes('/stats')
 }
 
+function sessionIdentity(token: string | null): string {
+  if (!token) return ''
+  try { const p=JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));return `${p.userId}:${p.sessionId??''}` } catch { return token }
+}
+let authEpoch=0
 let apiToken: string | null = null
 let apiRefreshToken: string | null = null
 let unauthorizedHandler: (() => void) | null = null
 
 export function setApiToken(token: string | null) {
+  if(sessionIdentity(token)!==sessionIdentity(apiToken)) {authEpoch++;refreshPromise=null}
   apiToken = token
+  clearApiCache()
 }
 
 export function setRefreshToken(token: string | null) {
@@ -126,7 +137,8 @@ export function setTokensRefreshedHandler(handler: ((token: string, refreshToken
 }
 
 const cache = new Map<string, { data: any; ts: number }>()
-export function clearApiCache() { cache.clear() }
+let cacheGeneration=0
+export function clearApiCache() { cacheGeneration++;cache.clear() }
 const CACHE_TTL = 30000
 
 function cacheKey(config: { method?: string; url?: string; params?: any }) {
@@ -146,26 +158,34 @@ function normalizeIds(obj: unknown): void {
 }
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  if((config as any)._authEpoch!==undefined && (config as any)._authEpoch!==authEpoch) throw Error('Sessiya o‘zgardi')
+  ;(config as any)._authEpoch=authEpoch
+  ;(config as any)._cacheGeneration=cacheGeneration
+  const requestOwner = config.headers['X-Account-ID']
+  if (requestOwner && requestOwner !== getActiveUser()) throw new Error('Hisob o‘zgardi')
+  if (getActiveUser()) config.headers['X-Account-ID'] = getActiveUser()
+  config.headers['X-Client-Protocol']='2'
+  if(!['get','head','options'].includes(config.method??'get')) config.headers['Idempotency-Key'] ??= crypto.randomUUID()
   if (apiToken) {
     config.headers.Authorization = `Bearer ${apiToken}`
   }
   // Re-evaluated on every dispatch so a failover that happened mid-session
   // applies to the very next call, including one being retried right below.
   config.baseURL = activeApiBaseUrl()
-  if (config.timeout === undefined) {
+  if (!config.timeout) {
     config.timeout = isHeavyRequest(config) ? HEAVY_TIMEOUT_MS : DEFAULT_TIMEOUT_MS
   }
   if (config.method === 'get') {
     const key = cacheKey(config)
     const hit = cache.get(key)
     if (hit && Date.now() - hit.ts < CACHE_TTL) {
-      config.adapter = () => Promise.resolve({ data: hit.data, status: 200, statusText: 'OK', headers: {}, config })
+      config.adapter = () => Promise.resolve({ data: hit.data, status: 200, statusText: 'OK', headers: { 'x-local-cache': 'hit' }, config })
     }
   }
   return config
 })
 
-let refreshPromise: Promise<'ok' | 'failed'> | null = null
+let refreshPromise: Promise<'ok' | 'failed' | 'network' | 'changed'> | null = null
 
 function handleSessionExpired(
   error: AxiosError<{ success?: boolean; error?: { message?: string; details?: unknown; code?: string }; message?: string }>,
@@ -203,20 +223,24 @@ function handleSessionExpired(
 
 api.interceptors.response.use(
   (response) => {
+    if((response.config as any)._authEpoch!==authEpoch) throw Error('Hisob yoki sessiya o‘zgardi')
+    if (response.config.headers['X-Account-ID'] && response.config.headers['X-Account-ID'] !== getActiveUser()) throw new Error('Hisob o‘zgardi')
     const body = response.data
     if (body && typeof body === 'object' && 'success' in body && 'data' in body) {
       response.data = body.data
     }
     normalizeIds(response.data)
-    if (response.config.method === 'get') {
+    if (response.config.method === 'get' && !response.headers['x-local-cache'] && (response.config as any)._cacheGeneration===cacheGeneration) {
       cache.set(cacheKey(response.config), { data: response.data, ts: Date.now() })
-    } else {
-      cache.clear()
+    } else if (response.config.method !== 'get') {
+      clearApiCache()
     }
     return response
   },
   async (error: AxiosError<{ success?: boolean; error?: { message?: string; details?: unknown }; message?: string }>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean; _failoverRetried?: boolean }
+    if(originalRequest && (originalRequest as any)._authEpoch!==authEpoch) return Promise.reject(Error('Hisob yoki sessiya o‘zgardi'))
+    if (originalRequest?.headers['X-Account-ID'] && originalRequest.headers['X-Account-ID'] !== getActiveUser()) return Promise.reject(new Error('Hisob o‘zgardi'))
     const url = originalRequest?.url ?? ''
     const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh') || url.includes('/auth/logout')
 
@@ -226,7 +250,7 @@ api.interceptors.response.use(
     // backup immediately. Applies to auth calls too. Only ever retried once
     // per request, so a backup that's *also* down surfaces as a normal error
     // instead of looping.
-    if (originalRequest && !originalRequest._failoverRetried && isFailoverTriggering(error)) {
+    if (originalRequest && ['get', 'head', 'options'].includes(originalRequest.method ?? '') && !originalRequest._failoverRetried && isFailoverTriggering(error)) {
       originalRequest._failoverRetried = true
       if (!isPrimaryDown) {
         isPrimaryDown = true
@@ -240,9 +264,12 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401 && !isAuthEndpoint && apiRefreshToken && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true
+      const refreshEpoch=authEpoch
+      const refreshingToken=apiRefreshToken
       const pending = refreshPromise ?? (refreshPromise = (async () => {
         try {
-          const res = await rawAxios.post(`${activeApiBaseUrl()}/auth/refresh`, { refreshToken: apiRefreshToken }, { timeout: DEFAULT_TIMEOUT_MS })
+          const res = await rawAxios.post(`${activeApiBaseUrl()}/auth/refresh`, { refreshToken: refreshingToken }, { timeout: DEFAULT_TIMEOUT_MS })
+          if(refreshEpoch!==authEpoch) return 'changed' as const
           const body = res.data
           const data = body && typeof body === 'object' && 'success' in body && 'data' in body ? body.data : body
           const newToken: string = data.token
@@ -254,11 +281,14 @@ api.interceptors.response.use(
           void setStoredRefreshToken(newRefresh)
           tokensRefreshedHandler?.(newToken, newRefresh)
           return 'ok' as const
-        } catch {
-          return 'failed' as const
+        } catch (refreshError:any) {
+          if(refreshEpoch!==authEpoch) return 'changed' as const
+          return [400,401,403].includes(refreshError?.response?.status)?'failed' as const:'network' as const
         }
-      })().finally(() => { refreshPromise = null }))
+      })().finally(() => { if(refreshEpoch===authEpoch) refreshPromise = null }))
       return pending.then((result) => {
+        if(refreshEpoch!==authEpoch || result==='changed') return Promise.reject(Error('Hisob yoki sessiya o‘zgardi'))
+        if(result==='network') return Promise.reject(Object.assign(Error('Tokenni yangilash uchun server bilan aloqa yo‘q'),{code:'REFRESH_NETWORK_ERROR'}))
         if (result === 'failed') {
           return Promise.reject(handleSessionExpired(error))
         }
@@ -281,9 +311,17 @@ api.interceptors.response.use(
 
     const data = error.response?.data
     let message: string
+    // Backend AppError codes (INVALID_SYNC_CURSOR / SYNC_RESET_REQUIRED /
+    // SYNC_SCOPE_CHANGED, among others) used to be dropped here — only
+    // `message` survived past this point, so syncEngine.ts had no way to
+    // tell "cursor needs a reset" apart from any other sync failure and had
+    // to treat all of them as a generic error. Preserved the same way
+    // ECONNABORTED/ERR_NETWORK/REFRESH_NETWORK_ERROR already do above.
+    let code: string | undefined
     if (data && typeof data === 'object') {
       if ('error' in data && data.error && typeof data.error === 'object' && 'message' in data.error && typeof data.error.message === 'string') {
         message = data.error.message
+        code = (data.error as { code?: string }).code
       } else if ('message' in data && typeof data.message === 'string') {
         message = data.message
       } else {
@@ -293,7 +331,7 @@ api.interceptors.response.use(
       message = error.message || 'API xatoligi'
     }
 
-    return Promise.reject(new Error(message))
+    return Promise.reject(code ? Object.assign(new Error(message), { code }) : new Error(message))
   },
 )
 
@@ -363,7 +401,7 @@ export const productsApi = {
   restock: (id: string, quantity: number) =>
     api.patch<Product>(`/products/${id}/restock`, { quantity }),
 
-  delete: (id: string) => api.delete(`/products/${id}`),
+  delete: (id: string,baseVersion:number) => api.delete(`/products/${id}`,{data:{baseVersion}}),
 
   // New R2-backed upload path (see backend's product.controller.ts). Sends
   // multipart/form-data with field name `image`, matching the server's
@@ -432,7 +470,7 @@ export const snapshotsApi = {
 }
 
 export const syncApi = {
-  sync: (payload: SyncPayload) => api.post<SyncResponse>('/sync', payload),
+  sync: (payload: SyncPayload, owner: string) => api.post<SyncResponse>('/sync', payload, { headers: { 'X-Account-ID': owner } }),
 }
 
 export const debtorsApi = {

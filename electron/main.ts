@@ -1,3 +1,4 @@
+import { trustedRendererUrl } from "./trust";
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme } from 'electron'
 import path from 'path'
 import Store from 'electron-store'
@@ -52,6 +53,10 @@ function createWindow(): void {
     },
   })
 
+  mainWindow.webContents.setWindowOpenHandler(()=>({action:'deny'}))
+  mainWindow.webContents.on('will-navigate',(event,url)=>{if(!trustedRendererUrl(url,isDev))event.preventDefault()})
+  mainWindow.webContents.on('will-attach-webview',event=>event.preventDefault())
+
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools({ mode: 'detach' })
@@ -87,10 +92,6 @@ function createWindow(): void {
 
   Menu.setApplicationMenu(null)
 }
-
-ipcMain.handle('window:isMaximized', () => {
-  return mainWindow?.isMaximized() ?? false
-})
 
 app.whenReady().then(() => {
   initIpcHandlers(ipcMain, store as unknown as Store)

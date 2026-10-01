@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 const electronAPI = {
+  requestBackend:(request:unknown)=>ipcRenderer.invoke('api:request',request),
   getToken: () => ipcRenderer.invoke('store:getToken'),
   setToken: (token: string) => ipcRenderer.invoke('store:setToken', token),
   clearToken: () => ipcRenderer.invoke('store:clearToken'),
