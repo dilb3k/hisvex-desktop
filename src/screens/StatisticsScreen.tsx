@@ -1,3 +1,4 @@
+import { escapeCsvCell } from "../utils/csv";
 import { useEffect, useState, useMemo, useCallback, forwardRef } from 'react'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
@@ -752,7 +753,7 @@ export function StatisticsScreen() {
     // setting, which on an Uzbek/Russian-locale Windows machine is `;`, not
     // `,` — so every row lands crammed into column A instead of split into
     // columns. The hint forces comma parsing regardless of locale.
-    const csv = 'sep=,\n' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const csv = 'sep=,\n' + rows.map(r => r.map(escapeCsvCell).join(',')).join('\n')
     const fileName = `hisobot-${range.from}-${range.to}.csv`
     const content = '﻿' + csv
 

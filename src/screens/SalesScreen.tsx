@@ -1,11 +1,12 @@
+import { syncNow } from '../store/syncEngine'
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useAppStore } from '../store/appStore'
 import { useAuthStore } from '../store/authStore'
 import { inventoryApi, getProductImageSrc, getDeviceId, clearApiCache } from '../api/client'
 import { isOnline, isNetworkError } from '../utils/network'
 import { isBlockCodeDisabled } from '../utils/blockCode'
-import { enqueue, getQueueSnapshot, subscribe as subscribeQueue } from '../store/offlineQueue'
-import type { QueuedInventory } from '../store/offlineQueue'
+import { enqueue, getPendingProductIds, subscribe as subscribeQueue } from '../store/offlineQueue'
+import type { QueuedOperation } from '../store/offlineQueue'
 import { Check, Minus, Plus, Package, Scan, Search, ShoppingBag, Tag, X, Wallet, ShoppingCart, Trash2, AlertTriangle, RefreshCw, Lock } from 'lucide-react'
 import { t } from '../i18n'
 import type { InventoryItem, Product } from '../types'
@@ -121,11 +122,11 @@ export function SalesScreen() {
   // so a cashier can see which lines are still unsynced after the
   // confirmation banner auto-clears or after navigating away and back.
   const [pendingOfflineIds, setPendingOfflineIds] = useState<Set<string>>(
-    () => new Set(getQueueSnapshot().inventory.map((item) => item.productId))
+    () => getPendingProductIds()
   )
 
   useEffect(() => subscribeQueue(() => {
-    setPendingOfflineIds(new Set(getQueueSnapshot().inventory.map((item) => item.productId)))
+    setPendingOfflineIds(getPendingProductIds())
   }), [])
 
   const loadInventory = useCallback(async () => {
@@ -435,13 +436,10 @@ export function SalesScreen() {
     lines: { productId: string; quantity: number; unitPrice?: number; lineRevenue?: number }[],
     date: string,
   ) => {
-    const deviceId = getDeviceId()
-    const updatedAt = new Date().toISOString()
-
     const updatedByProductId: Record<string, InventoryItem> = {}
     for (const { productId, quantity, unitPrice, lineRevenue } of lines) {
-      const existing = inventoryByProductId[productId]
-      if (!existing) continue
+      const existing = updatedByProductId[productId] ?? inventoryByProductId[productId]
+      if (!existing || quantity > existing.currentQuantity) throw new Error('Mahsulot qoldig‘i yetarli emas')
 
       const listPrice = resolveSellPrice(existing, existing.product)
       const buyPrice = existing.buyPrice ?? existing.product?.buyPrice ?? 0
@@ -484,21 +482,6 @@ export function SalesScreen() {
     setInventoryItems(prev => prev.map(item => updatedByProductId[item.productId] ?? item))
     applyLocalSale(date, lines)
 
-    // Queue one pending inventory update per affected product, matching the
-    // SyncPayload shape from step 1. enqueue() upserts by localId, so a
-    // second offline sale for the same product/date before the next sync
-    // simply replaces the pending entry with the latest cumulative quantity.
-    for (const updated of Object.values(updatedByProductId)) {
-      const { product: _product, ...withoutProduct } = updated
-      const queuedItem: QueuedInventory = {
-        ...withoutProduct,
-        localId: updated._id,
-        deviceId,
-        updatedAt,
-      }
-      enqueue('inventory', queuedItem)
-    }
-
     clearCart()
     // Unified with the online path: both now show the SAME inline banner
     // element (just different wording), instead of online=banner /
@@ -516,50 +499,31 @@ export function SalesScreen() {
     if (totalPieces === 0 || submitting) return
     setSubmitting(true)
     try {
-      const lines = totals.lines.map(({ productId, quantity, lineTotal, listPrice }) => ({
-        productId,
-        quantity,
-        // Only sent when the line was actually renegotiated — an untouched
-        // line stays on the server's cheap list-price path instead of being
-        // routed through the locked-revenue accumulators for no reason.
-        ...(Math.abs(lineTotal - roundMoney(quantity * listPrice)) > 0.005
-          ? { lineRevenue: lineTotal }
-          : {}),
-      }))
-      const today = getBusinessDate()
-
-      if (!isOnline()) {
-        recordSaleOffline(lines, today)
-        return
+      const lines = totals.lines.map(({ productId, quantity, lineTotal }) => {
+        const entry=inventoryByProductId[productId]
+        const product=products.find(p=>p.localId===productId||p._id===productId) ?? entry?.product
+        return {productId,quantity,lineRevenue:lineTotal,expectedBuyPrice:entry?.buyPrice??product?.buyPrice??0,expectedUnit:normalizeUnit(entry?.unit??product?.unit),expectedStockEpoch:product?.stockEpoch??0}
+      })
+      const quantities = new Map<string, number>()
+      for (const line of lines) quantities.set(line.productId, (quantities.get(line.productId) ?? 0) + line.quantity)
+      for (const [productId, quantity] of quantities) {
+        if (!inventoryByProductId[productId] || quantity > inventoryByProductId[productId].currentQuantity) throw Error('Mahsulot qoldig‘i yetarli emas')
       }
-
-      try {
-        await inventoryApi.recordSales(today, lines)
-        // Drop the sold units from what is on screen before anything is
-        // re-fetched, so the stock is right in the same frame the cart
-        // clears; the calls below only confirm it.
-        setInventoryItems(prev => prev.map(item => {
-          const soldQty = cart[item.productId] || 0
-          if (soldQty <= 0) return item
-          return { ...item, currentQuantity: roundQty(Math.max(item.currentQuantity - soldQty, 0)) }
-        }))
-        clearCart()
-        clearApiCache()
-        // This was the actual stale-data bug: the online path refreshed only
-        // this screen, so Inventory, Products and Statistics kept showing the
-        // pre-sale quantities until each was reloaded by hand. refreshAll()
-        // re-reads the shared store and bumps refreshKey, which every screen
-        // now watches.
-        await refreshAll()
-        await loadInventory()
-        setSuccess(t('salesSuccess'))
-        setTimeout(() => setSuccess(null), 3000)
-      } catch (err: unknown) {
-        if (isNetworkError(err)) {
-          recordSaleOffline(lines, today)
-          return
-        }
-        throw err
+      const today = getBusinessDate()
+      // One immutable ID exists before ANY network attempt or success UI.
+      const id = crypto.randomUUID()
+      const occurredAt = new Date().toISOString()
+      const operation: QueuedOperation = {kind: 'sale', id, localId: id, deviceId: getDeviceId(), occurredAt, updatedAt: occurredAt, date: today, lines}
+      await enqueue('operation', operation)
+      recordSaleOffline(lines, today)
+      if (isOnline()) {
+        const result = await syncNow()
+        if (result.ok) {
+          clearApiCache()
+          await refreshAll()
+          await loadInventory()
+          setSuccess(t('salesSuccess'))
+        } else if (result.error) showToast(result.error, 'error')
       }
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : t('error'), 'error')

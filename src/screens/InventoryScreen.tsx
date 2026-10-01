@@ -1,3 +1,4 @@
+import { syncNow } from '../store/syncEngine'
 import { useEffect, useState, useMemo, useCallback, forwardRef } from 'react'
 import { inventoryApi, getProductImageSrc, clearApiCache, getDeviceId } from '../api/client'
 import { useAppStore } from '../store/appStore'
@@ -30,8 +31,7 @@ import {
   parseQuantityInput,
 } from '../utils/inventory'
 import { isOnline, isNetworkError } from '../utils/network'
-import { enqueue, getQueueSnapshot, subscribe as subscribeQueue } from '../store/offlineQueue'
-import type { QueuedInventory } from '../store/offlineQueue'
+import { enqueue, getPendingProductIds, subscribe as subscribeQueue } from '../store/offlineQueue'
 
 
 interface EnrichedItem {
@@ -212,11 +212,11 @@ export function InventoryScreen() {
   // local-only state, so navigating away and back doesn't lose track of
   // items still actually queued.
   const [pendingOfflineIds, setPendingOfflineIds] = useState<Set<string>>(
-    () => new Set(getQueueSnapshot().inventory.map((item) => item.productId))
+    () => getPendingProductIds()
   )
 
   useEffect(() => subscribeQueue(() => {
-    setPendingOfflineIds(new Set(getQueueSnapshot().inventory.map((item) => item.productId)))
+    setPendingOfflineIds(getPendingProductIds())
   }), [])
 
   const isPastDate = dayjs(selectedDate).isBefore(getBusinessDate(), 'day')
@@ -338,48 +338,6 @@ export function InventoryScreen() {
     }))
   }, [])
 
-  // Queues the current-quantity edit for background sync instead of the
-  // direct API call, same pattern as SalesScreen's recordSaleOffline: apply
-  // optimistically, enqueue one pending inventory update, show a
-  // non-error success toast. Deliberately not calling syncEngine.syncNow()
-  // here — the background engine already syncs on reconnect and interval.
-  const saveQuantityOffline = useCallback((productId: string, newQty: number, statedRevenue?: number) => {
-    applyQuantityLocally(productId, newQty, statedRevenue)
-
-    const existing = selectedEntry?.inv
-    if (existing) {
-      const { product: _product, ...withoutProduct } = existing
-      const opening = existing.startQuantity ?? existing.openingQuantity ?? existing.currentQuantity
-      const sold = roundQty(Math.max(opening - newQty, 0))
-      const buyPrice = existing.buyPrice ?? existing.product?.buyPrice ?? 0
-      const queuedItem: QueuedInventory = {
-        ...withoutProduct,
-        currentQuantity: newQty,
-        // Mirrors the server's bulk-current handling: a stated revenue moves
-        // the whole derived span into the locked accumulators and collapses
-        // it, so nothing is left to be re-valued at the list price.
-        ...(statedRevenue !== undefined && sold > 0
-          ? {
-              startQuantity: newQty,
-              lockedSold: roundQty((existing.lockedSold ?? 0) + sold),
-              lockedRevenue: roundMoney((existing.lockedRevenue ?? 0) + statedRevenue),
-              lockedProfit: roundMoney((existing.lockedProfit ?? 0) + statedRevenue - sold * buyPrice),
-            }
-          : {}),
-        localId: existing._id,
-        deviceId: getDeviceId(),
-        updatedAt: new Date().toISOString(),
-      }
-      // enqueue() notifies offlineQueue subscribers synchronously, which
-      // updates pendingOfflineIds above — no need to set it here too.
-      enqueue('inventory', queuedItem)
-    }
-
-    setSaved(true)
-    showToast(t('inventorySavedOffline'), 'success')
-    setTimeout(() => closeModal(), 700)
-  }, [applyQuantityLocally, selectedEntry, showToast])
-
   // Real-bug fix: entering a "remaining" quantity greater than the day's
   // opening quantity used to save silently (Math.max just floored the
   // derived "sold" at 0, hiding the problem). Now it's blocked inline
@@ -390,6 +348,7 @@ export function InventoryScreen() {
 
   const execSave = async () => {
     if (!selectedEntry || !isEditable) return
+    if (getPendingProductIds().has(selectedEntry.inv?.productId ?? selectedEntry.product._id)) { showToast('Avvalgi amal tasdiqlanmagan. Tahrirdan oldin sinxronlang.', 'error'); return }
     const rawQty = parseQuantityInput(currentQtyInput, selectedEntry.unit)
     // Block save outright when the typed value exceeds the opening
     // quantity — the inline error is already visible; this is the actual
@@ -403,29 +362,20 @@ export function InventoryScreen() {
     try {
       const productId = selectedEntry.inv?.productId ?? selectedEntry.product._id
 
-      if (!isOnline()) {
-        saveQuantityOffline(productId, newQty, statedRevenue)
-        return
+      const id = crypto.randomUUID()
+      const occurredAt = new Date().toISOString()
+      await enqueue('operation', {kind: 'adjustment', id, localId: id, occurredAt, updatedAt: occurredAt, deviceId: getDeviceId(), date: selectedDate,
+        items: [{productId, currentQuantity: newQty, baseVersion: selectedEntry.inv?.serverVersion ?? 0, ...(statedRevenue !== undefined ? {lineRevenue: statedRevenue} : {})}],
+      })
+      applyQuantityLocally(productId, newQty, statedRevenue)
+      setSaved(true)
+      showToast(t('inventorySavedOffline'), 'success')
+      if (isOnline()) {
+        const result = await syncNow()
+        if (result.ok) { clearApiCache(); await useAppStore.getState().refreshAll() }
+        else if (result.error) showToast(result.error, 'error')
       }
-
-      try {
-        await inventoryApi.bulkUpdate([{
-          productId,
-          currentQuantity: newQty,
-          ...(statedRevenue !== undefined ? { lineRevenue: statedRevenue } : {}),
-        }])
-        applyQuantityLocally(productId, newQty, statedRevenue)
-        setSaved(true)
-        clearApiCache()
-        await useAppStore.getState().refreshAll()
-        setTimeout(() => closeModal(), 700)
-      } catch (err: unknown) {
-        if (isNetworkError(err)) {
-          saveQuantityOffline(productId, newQty, statedRevenue)
-          return
-        }
-        throw err
-      }
+      setTimeout(() => closeModal(), 700)
     } catch (err: unknown) { showToast(err instanceof Error ? err.message : t('error'), 'error') } finally { setSaving(false) }
   }
 

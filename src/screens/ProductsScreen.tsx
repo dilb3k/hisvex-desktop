@@ -1,3 +1,4 @@
+import { syncNow } from '../store/syncEngine'
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useAppStore } from '../store/appStore'
 import { useAuthStore } from '../store/authStore'
@@ -22,7 +23,7 @@ import {
 } from '../utils/inventory'
 import { isBlockCodeDisabled } from '../utils/blockCode'
 import { isOnline, isNetworkError } from '../utils/network'
-import { enqueue, getQueueSnapshot, subscribe as subscribeQueue } from '../store/offlineQueue'
+import { enqueue, getPendingProductIds, assertNoPendingProductWrites, subscribe as subscribeQueue } from '../store/offlineQueue'
 import type { QueuedProduct } from '../store/offlineQueue'
 import {
   overlay,
@@ -212,11 +213,11 @@ export function ProductsScreen() {
   // navigating away and back doesn't lose track of items still actually
   // queued — enqueue()/removeSynced() elsewhere keep this in sync.
   const [pendingOfflineIds, setPendingOfflineIds] = useState<Set<string>>(
-    () => new Set(getQueueSnapshot().product.map((item) => item._id))
+    () => getPendingProductIds()
   )
 
   useEffect(() => subscribeQueue(() => {
-    setPendingOfflineIds(new Set(getQueueSnapshot().product.map((item) => item._id)))
+    setPendingOfflineIds(getPendingProductIds())
   }), [])
 
   const blockCode = useAuthStore((s) => s.user?.blockCode ?? null)
@@ -425,7 +426,7 @@ export function ProductsScreen() {
   // product.service.ts). Once synced, the server assigns its own real _id
   // for the same localId; syncEngine's product merge reconciles the two so
   // this placeholder row doesn't linger as a duplicate.
-  const saveProductOffline = useCallback((barcodes: string[]) => {
+  const saveProductOffline = useCallback(async (barcodes: string[]) => {
     const now = new Date().toISOString()
     const localId = editingProduct?.localId
       ?? editingProduct?._id
@@ -446,14 +447,6 @@ export function ProductsScreen() {
       updatedAt: now,
     }
 
-    useAppStore.setState((state) => {
-      const idx = state.products.findIndex((p) => p._id === updated._id)
-      const products = idx >= 0
-        ? state.products.map((p, i) => (i === idx ? updated : p))
-        : [...state.products, updated]
-      return { products }
-    })
-
     const queuedItem: QueuedProduct = {
       ...updated,
       localId,
@@ -462,7 +455,16 @@ export function ProductsScreen() {
     }
     // enqueue() notifies offlineQueue subscribers synchronously, which
     // updates pendingOfflineIds above — no need to set it here too.
-    enqueue('product', queuedItem)
+    await enqueue('product', queuedItem)
+    useAppStore.setState((state) => {
+      const idx = state.products.findIndex((p) => p._id === updated._id)
+      const products = idx >= 0
+        ? state.products.map((p, i) => (i === idx ? updated : p))
+        : [...state.products, updated]
+      return { products }
+    })
+
+
 
     closeProductModal()
     showToast(t('productSavedOffline'), 'success')
@@ -483,56 +485,20 @@ export function ProductsScreen() {
         }
       }
     }
-    const payload: Record<string, unknown> = {
-      name: form.name.trim(),
-      quantity: parseQuantityInput(form.quantity, form.unit),
-      unit: form.unit,
-      buyPrice: parseFormattedAmount(form.buyPrice),
-      sellPrice: parseFormattedAmount(form.sellPrice),
-      barcodes,
-      deviceId: getDeviceId(),
-    }
-    if (form.image !== undefined && form.image !== editingProduct?.image) {
-      payload.image = form.image
-    }
-
-    if (!isOnline()) {
-      saveProductOffline(barcodes)
-      return true
-    }
-
     setIsSubmitting(true)
     try {
-      if (editingProduct) {
-        await productsApi.update(editingProduct._id, payload)
-      } else {
-        await productsApi.create(payload)
+      await saveProductOffline(barcodes)
+      if (isOnline()) {
+        const result = await syncNow()
+        if (result.ok) { clearApiCache(); await refreshAll() }
+        else if (result.error) showToast(result.error, 'error')
       }
-      closeProductModal()
-      clearApiCache()
-      await refreshAll()
       return true
-    } catch (err: unknown) {
-      if (isNetworkError(err)) {
-        saveProductOffline(barcodes)
-        return true
-      }
-      const message = err instanceof Error ? err.message : t('error')
-      // The backend's 409 duplicate-barcode responses (both the pre-check
-      // and the race-condition/unique-index fallback — see
-      // comp-bar-server's product.service.ts) always mention "barcode" in
-      // their message; route those to the field-level error next to the
-      // barcode input instead of a generic toast (item 8).
-      if (/barcode/i.test(message)) {
-        setBarcodeError(message)
-      } else {
-        showToast(message, 'error')
-      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : t('error'), 'error')
       return false
-    } finally {
-      setIsSubmitting(false)
-    }
-  }, [form, editingProduct, refreshAll, products, saveProductOffline])
+    } finally { setIsSubmitting(false) }
+  }, [form, editingProduct, products, refreshAll, saveProductOffline, showToast])
 
   const handleSave = async () => {
     if (!validate()) return
@@ -554,68 +520,25 @@ export function ProductsScreen() {
     }
   }
 
-  // The restock endpoint is atomic server-side (an increment, not a
-  // full-record PUT), which the sync payload has no representation for — a
-  // sync product entry is always a full upsert. So the offline fallback
-  // enqueues the *result* of the increment as a normal full product update,
-  // same as a plain edit; the atomicity guarantee only applies to the
-  // online path, which is unavoidable without an increment concept in the
-  // sync contract.
-  const restockProductOffline = useCallback((qtyToAdd: number) => {
-    if (!restockProduct) return
-    const now = new Date().toISOString()
-    const localId = restockProduct.localId ?? restockProduct._id
-    const updated: Product = {
-      ...restockProduct,
-      quantity: roundQty((restockProduct.quantity ?? 0) + qtyToAdd),
-      localId,
-      updatedAt: now,
-    }
-
-    useAppStore.setState((state) => ({
-      products: state.products.map((p) => (p._id === restockProduct._id ? updated : p)),
-    }))
-
-    const queuedItem: QueuedProduct = {
-      ...updated,
-      localId,
-      deviceId: getDeviceId(),
-      updatedAt: now,
-      createdAt: updated.createdAt ?? now,
-    }
-    // enqueue() notifies offlineQueue subscribers synchronously, which
-    // updates pendingOfflineIds above — no need to set it here too.
-    enqueue('product', queuedItem)
-
-    closeRestockModal()
-    showToast(t('restockSavedOffline'), 'success')
-  }, [restockProduct, showToast])
-
   const handleRestock = async () => {
-    if (!restockProduct || !restockQty) return
-    const qtyToAdd = parseQuantityInput(restockQty, restockProduct.unit)
-    if (!Number.isFinite(qtyToAdd) || qtyToAdd <= 0) { showToast('To\'g\'ri miqdor kiriting', 'error'); return }
-
-    if (!isOnline()) {
-      restockProductOffline(qtyToAdd)
-      return
-    }
-
+    if (!restockProduct || !restockQty || isRestocking) return
+    const quantity = parseQuantityInput(restockQty, restockProduct.unit)
+    if (!Number.isFinite(quantity) || quantity <= 0) { showToast("To‘g‘ri miqdor kiriting", 'error'); return }
     setIsRestocking(true)
     try {
-      await productsApi.restock(restockProduct._id, qtyToAdd)
+      const id = crypto.randomUUID()
+      const occurredAt = new Date().toISOString()
+      await enqueue('operation', {kind: 'restock', id, localId: id, occurredAt, updatedAt: occurredAt, deviceId: getDeviceId(), productId: restockProduct.localId ?? restockProduct._id, quantity})
+      useAppStore.setState(state => ({ products: state.products.map(p => p._id === restockProduct._id ? {...p, quantity: roundQty((p.quantity ?? 0) + quantity)} : p) }))
       closeRestockModal()
-      clearApiCache()
-      await refreshAll()
-    } catch (err: unknown) {
-      if (isNetworkError(err)) {
-        restockProductOffline(qtyToAdd)
-        return
+      showToast(t('restockSavedOffline'), 'success')
+      if (isOnline()) {
+        const result = await syncNow()
+        if (result.ok) { clearApiCache(); await refreshAll() }
+        else if (result.error) showToast(result.error, 'error')
       }
-      showToast(err instanceof Error ? err.message : t('error'), 'error')
-    } finally {
-      setIsRestocking(false)
-    }
+    } catch (error) { showToast(error instanceof Error ? error.message : t('error'), 'error') }
+    finally { setIsRestocking(false) }
   }
 
   // Unlike create/update/restock, deletion has no representation at all in
@@ -636,7 +559,8 @@ export function ProductsScreen() {
 
     setIsDeleting(true)
     try {
-      await productsApi.delete(deleteTarget._id)
+      await assertNoPendingProductWrites(deleteTarget.localId??deleteTarget._id)
+      await productsApi.delete(deleteTarget._id,deleteTarget.serverVersion??0)
       setShowDeleteModal(false); setDeleteTarget(null)
       closeProductModal()
       clearApiCache()
