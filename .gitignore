@@ -2,6 +2,13 @@ node_modules/
 build/*
 !build/icon.png
 dist/
-.env.local
+.env*
+!.env.example
 *.log
 .DS_Store
+
+admin-backup*.json
+*.dump
+*.backup
+
+.claude/settings.local.json
