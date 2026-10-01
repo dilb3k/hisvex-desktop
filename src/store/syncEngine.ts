@@ -1,43 +1,16 @@
-// Orchestration layer for offline-first sync. Later steps (screens) call
-// `syncNow()` directly after local mutations; this module also drives sync
-// automatically on reconnect and periodically in the background. It is not
-// wired into any screen/component yet — importing this module is what
-// activates its background behavior (online-transition + periodic timer),
-// same self-initializing pattern as ../utils/network.ts.
-
 import { isOnline, subscribeOnline } from '../utils/network'
-import { getQueueSnapshot, getPendingCount, removeSynced } from './offlineQueue'
-import type { QueueKind } from './offlineQueue'
+import { getQueueSnapshot, getActiveUser, waitForQueue, removeSynced } from './offlineQueue'
 import { syncApi } from '../api/client'
 import { useAppStore } from './appStore'
-import type { DailySnapshot, InventoryItem, Product, SyncPayload, SyncRejectedItem, SyncResponse } from '../types'
+import type { DailySnapshot, InventoryItem, Product, SyncPayload, SyncResponse } from '../types'
 
-const LAST_SYNC_KEY = 'hisvex_last_sync_at'
-const BACKGROUND_SYNC_INTERVAL_MS = 60000
-
-export interface SyncResult {
-  ok: boolean
-  error?: string
-}
-
-function getLastSyncAt(): string | undefined {
-  if (typeof window === 'undefined') return undefined
-  try {
-    return localStorage.getItem(LAST_SYNC_KEY) || undefined
-  } catch {
-    return undefined
-  }
-}
-
-function setLastSyncAt(value: string): void {
-  if (typeof window === 'undefined') return
-  try {
-    localStorage.setItem(LAST_SYNC_KEY, value)
-  } catch {
-    // Best-effort — worst case the next sync re-pulls a bit more than needed.
-  }
-}
-
+export interface SyncResult { ok: boolean; error?: string }
+const checkpointKey = (owner: string) => `hisvex_sync_v2:${owner}`
+// sync.pull.ts throws these when the cursor/checkpoint itself is the
+// problem (rotated HMAC secret, server revision moved backwards, scope
+// changed mid-page) — not a normal transient failure. See performSync's
+// pull loop below for the bounded-single-retry recovery.
+const SYNC_CURSOR_RESET_CODES = new Set(['INVALID_SYNC_CURSOR', 'SYNC_RESET_REQUIRED', 'SYNC_SCOPE_CHANGED'])
 function mergeById<T extends { _id: string }>(existing: T[], incoming: T[]): T[] {
   if (incoming.length === 0) return existing
   const merged = new Map(existing.map((item) => [item._id, item]))
@@ -73,204 +46,115 @@ function mergeProducts(existing: Product[], incoming: Product[]): Product[] {
 // hydrateBlockCode use to update state from outside a component), rather
 // than bypassing the store with some parallel piece of state.
 function applyPulledUpdates(response: SyncResponse): void {
+  const pending = getQueueSnapshot()
+  const pendingProducts = new Set(pending.product.map(p => p.localId))
+  const pendingInventory = new Set(pending.inventory.map(i => i.productId))
+  for (const op of pending.operation) {
+    const ids = op.kind === 'restock' ? [op.productId] : (op.kind === 'sale' ? op.lines : op.items).map(line => line.productId)
+    ids.forEach(id => { pendingProducts.add(id); pendingInventory.add(id) })
+  }
+  response = { ...response, products: response.products.filter(p => !pendingProducts.has(p.localId ?? p._id)), inventory: response.inventory.filter(i => !pendingInventory.has(i.productId)) }
   useAppStore.setState((state) => ({
-    products: mergeProducts(state.products, response.products ?? []),
+    products: mergeProducts(state.products, response.products ?? []).filter(product =>
+      !(response.deletedProducts ?? []).some(deleted => deleted.localId === product.localId || deleted.productId === product._id)),
     inventory: mergeById<InventoryItem>(state.inventory, response.inventory ?? []),
-    snapshots: mergeById<DailySnapshot>(state.snapshots, response.daily ?? []),
+    snapshots: Object.values(pending).some(items=>items.length>0)?state.snapshots:mergeById<DailySnapshot>(state.snapshots, response.daily ?? []),
   }))
 }
 
-// Rejection reasons the server will never change its mind about, because they
-// are deterministic properties of the item itself rather than transient state:
-// a business day that has closed stays closed, and an entry with no date can
-// never gain one. Items rejected for these must be dropped from the queue —
-// keeping them (the previous behaviour) left them pending forever, which meant
-// the sync-status indicator never returned to "synced" and the 60s background
-// timer re-uploaded the same doomed payload for the lifetime of the install.
-//
-// FUTURE_DAY_NOT_ALLOWED is deliberately NOT terminal: it usually means clock
-// skew, and the item becomes valid on its own once that business day arrives.
-const TERMINAL_REJECT_REASONS = new Set(['PAST_DAY_LOCKED', 'MISSING_DATE'])
 
-// Backend entity names (sync.service.ts) -> local queue kinds.
-const ENTITY_TO_KIND: Record<string, QueueKind> = {
-  product: 'product',
-  inventory: 'inventory',
-  snapshot: 'daily',
-}
-
-/**
- * Splits one kind's sent items into those to remove from the queue
- * (accepted, plus rejected-for-good) and those to keep for a later retry.
- * Returns `(localId, updatedAt)` pairs (not bare ids) for `remove` so the
- * caller can hand removeSynced() the exact version that was confirmed — see
- * removeSynced()'s doc comment for why a bare id isn't enough.
- *
- * Rejections are matched per entity kind rather than through one flat set of
- * localIds: an inventory entry's localId is `${date}-${productLocalId}`, so a
- * flat set could let a product rejection suppress removal of an unrelated
- * inventory item that happened to share the string.
- */
-function partitionQueueIds(
-  kind: QueueKind,
-  sentItems: { localId: string; updatedAt: string }[],
-  rejected: SyncRejectedItem[],
-): { remove: { localId: string; updatedAt: string }[]; retryCount: number } {
-  const rejectedForKind = new Map<string, string>()
-  for (const item of rejected) {
-    if (ENTITY_TO_KIND[item.entity] === kind) {
-      rejectedForKind.set(item.localId, item.reason)
-    }
-  }
-
-  const remove: { localId: string; updatedAt: string }[] = []
-  let retryCount = 0
-  for (const item of sentItems) {
-    const reason = rejectedForKind.get(item.localId)
-    if (reason === undefined || TERMINAL_REJECT_REASONS.has(reason)) {
-      remove.push({ localId: item.localId, updatedAt: item.updatedAt })
-    } else {
-      retryCount += 1
-    }
-  }
-  return { remove, retryCount }
-}
-
-let syncInFlight: Promise<SyncResult> | null = null
-
-/**
- * Runs one sync cycle: pushes everything pending in the offline queue and
- * pulls everything the server has updated since the last successful sync.
- *
- * - Offline: returns `{ ok: false }` immediately, no network call, queue
- *   left untouched.
- * - Success: queue entries that were included are removed, pulled updates
- *   are merged into appStore, lastSyncAt is advanced, returns `{ ok: true }`.
- * - Failure: queue is left intact so the next attempt retries, returns
- *   `{ ok: false, error }`.
- *
- * Concurrent calls (e.g. a reconnect trigger firing while the background
- * timer is also due) are coalesced into a single in-flight request.
- */
+const flights = new Map<string, Promise<SyncResult>>()
 export function syncNow(): Promise<SyncResult> {
-  if (!isOnline()) {
-    return Promise.resolve({ ok: false })
-  }
-  if (syncInFlight) return syncInFlight
-
-  syncInFlight = performSync().finally(() => {
-    syncInFlight = null
-  })
-  return syncInFlight
+  const owner = getActiveUser()
+  if (!isOnline() || !owner) return Promise.resolve({ ok: false })
+  const existing = flights.get(owner)
+  if (existing) return existing
+  const pending = performSync(owner).finally(() => flights.delete(owner))
+  flights.set(owner, pending)
+  return pending
 }
 
-async function performSync(): Promise<SyncResult> {
-  const queue = getQueueSnapshot()
-  const payload: SyncPayload = { lastSyncAt: getLastSyncAt() }
-  if (queue.product.length > 0) payload.products = queue.product
-  if (queue.inventory.length > 0) payload.inventory = queue.inventory
-  if (queue.daily.length > 0) payload.daily = queue.daily
-
+async function performSync(owner: string, isCursorResetRetry = false): Promise<SyncResult> {
+  const assertOwner = () => { if (getActiveUser() !== owner) throw Error('Hisob o‘zgardi; navbat o‘z hisobida saqlandi') }
   try {
-    const { data } = await syncApi.sync(payload)
-
-    // The server validates each queued item independently (e.g. an inventory
-    // edit queued yesterday but only synced after the business day rolled
-    // over comes back PAST_DAY_LOCKED) and reports failures in `rejected`
-    // without failing the whole call. Accepted items are dropped; rejected
-    // ones are dropped only when the reason is terminal (see
-    // TERMINAL_REJECT_REASONS) and otherwise kept for the next attempt.
-    let retryTotal = 0
-    for (const [kind, items] of [
-      ['product', queue.product],
-      ['inventory', queue.inventory],
-      ['daily', queue.daily],
-    ] as const) {
-      if (items.length === 0) continue
-      const { remove, retryCount } = partitionQueueIds(kind, items, data.rejected)
-      removeSynced(kind, remove)
-      retryTotal += retryCount
+    await waitForQueue(); assertOwner(); resetSyncBaseline(owner)
+    const queue = getQueueSnapshot()
+    const rejectionMessages: string[] = []
+    // Push in bounded batches. All received pages are pulled again below;
+    // no partial response advances the checkpoint.
+    const count = Math.max(queue.product.length, queue.inventory.length, queue.daily.length, queue.operation.length)
+    for (let offset = 0; offset < count; offset += 100) {
+      assertOwner()
+      const sent = { product: queue.product.slice(offset, offset + 100), inventory: queue.inventory.slice(offset, offset + 100), daily: queue.daily.slice(offset, offset + 100), operation: queue.operation.slice(offset, offset + 100) }
+      const payload: SyncPayload = { protocolVersion: 2, limit: 1,
+        products: sent.product.map(p => ({ ...p, createdAt: p.createdAt ?? p.updatedAt })),
+        inventory: sent.inventory.map(i => ({ ...i, createdAt: i.createdAt ?? i.updatedAt })),
+        daily: sent.daily.map(d => ({ ...d, createdAt: d.createdAt ?? d.updatedAt })),
+        operations: sent.operation,
+      }
+      const { data } = await syncApi.sync(payload, owner)
+      assertOwner()
+      if (data.protocolVersion !== 2 || !data.acknowledged) throw Error('Server yangilanishi kerak. Navbat saqlanib qoldi.')
+      for (const [kind, items] of Object.entries(sent) as [keyof typeof sent, (typeof sent)[keyof typeof sent]][]) {
+        const entity = kind === 'daily' ? 'snapshot' : kind
+        const confirmed = items.filter(item => data.acknowledged!.some(ack => ack.entity === entity && ack.localId === item.localId && (kind === 'operation' || ack.updatedAt === item.updatedAt)))
+        await removeSynced(kind, confirmed, owner)
+      }
+      rejectionMessages.push(...data.rejected.map(item => `${item.localId}: ${item.reason}`))
     }
-
-    // Terminal rejections are discarded rather than retried, so they need their
-    // own message — "qayta urinib ko'riladi" would be a lie for these.
-    const droppedTotal = data.rejected.filter(
-      (item) => ENTITY_TO_KIND[item.entity] && TERMINAL_REJECT_REASONS.has(item.reason),
-    ).length
-
-    // Also not terminal (the cap is escaped by deleting a product or upgrading
-    // tier, so the queued item is correctly kept for a later retry — see
-    // TERMINAL_REJECT_REASONS above), but "qayta urinib ko'riladi" alone tells
-    // a 'bor'-tier admin nothing about why, or what would actually fix it.
-    const limitExceededTotal = data.rejected.filter((item) => item.reason === 'PRODUCT_LIMIT_EXCEEDED').length
-
-    applyPulledUpdates(data)
-    setLastSyncAt(data.serverTime)
-
-    if (data.rejected.length > 0) {
-      // eslint-disable-next-line no-console
-      console.warn('Sync: server rejected some queued items', data.rejected)
-      if (droppedTotal > 0) {
-        return {
-          ok: true,
-          error: `${droppedTotal} ta yozuv sinxronlanmadi (kun yopilgan) va o'chirildi`,
+    let cursor: string | undefined
+    let checkpoint = localStorage.getItem(checkpointKey(owner)) ?? undefined
+    let collected: SyncResponse | undefined
+    do {
+      assertOwner()
+      let data: SyncResponse
+      try {
+        ;({ data } = await syncApi.sync({ protocolVersion: 2, checkpoint, cursor, limit: 200 }, owner))
+      } catch (err: any) {
+        const code = err?.code as string | undefined
+        if (!isCursorResetRetry && code && SYNC_CURSOR_RESET_CODES.has(code)) {
+          // Zero-wipe recovery: drop ONLY the persisted checkpoint (this
+          // call's own in-memory cursor/pull-buffer is discarded too, simply
+          // by not continuing this loop) and restart the whole sync fresh,
+          // exactly once. The offline queue and every local business record
+          // are never touched — re-running the push phase on retry is safe
+          // regardless, since it already only sends what's still queued and
+          // every push item carries a durable operation ID.
+          localStorage.removeItem(checkpointKey(owner))
+          return performSync(owner, true)
         }
+        throw err
       }
-      if (limitExceededTotal > 0) {
-        return {
-          ok: true,
-          error: `${limitExceededTotal} ta mahsulot sinxronlanmadi — Bor tarifida 100 tadan ortiq mahsulot bo'lishi mumkin emas. Boshqa mahsulotni o'chiring yoki Pro tarifga o'ting.`,
-        }
-      }
-      if (retryTotal > 0) {
-        return {
-          ok: true,
-          error: `${retryTotal} ta yozuv sinxronlanmadi — qayta urinib ko'riladi`,
-        }
-      }
-    }
-
-    return { ok: true }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Sinxronlash muvaffaqiyatsiz tugadi'
-    return { ok: false, error: message }
-  }
+      assertOwner()
+      if (data.protocolVersion !== 2) throw Error('Server sync versiyasi mos emas. Navbat saqlanib qoldi.')
+      if (data.hasMore && !data.nextCursor) throw Error('Sync sahifasi to‘liq emas')
+      collected = collected ? { ...data,
+        products: [...collected.products, ...data.products], inventory: [...collected.inventory, ...data.inventory],
+        daily: [...collected.daily, ...data.daily], deletedProducts: [...(collected.deletedProducts ?? []), ...(data.deletedProducts ?? [])],
+      } : data
+      cursor = data.nextCursor ?? undefined
+      if (!data.hasMore) checkpoint = data.checkpoint ?? undefined
+    } while (cursor)
+    assertOwner()
+    if (!checkpoint || !collected) throw Error('Sync checkpoint olinmadi')
+    applyPulledUpdates(collected)
+    // The UI cache is in memory. On restart we do a full pull; this token is
+    // never reused against an empty, newly opened renderer store.
+    if (Object.values(getQueueSnapshot()).every(items => items.length === 0)) localStorage.setItem(checkpointKey(owner), checkpoint)
+    if (rejectionMessages.length) return { ok: false, error: `${rejectionMessages.length} ta amal tasdiqlanmadi; navbatda saqlanadi. ${rejectionMessages.slice(0, 3).join('; ')}` }
+    return { ok: Object.values(getQueueSnapshot()).every(items => items.length === 0) }
+  } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'Sinxronlash amalga oshmadi' } }
 }
 
-let initialized = false
+// Cache persistence is separate from durable intent persistence. A fresh
+// renderer always needs a baseline before it can consume a delta checkpoint.
+const loadedOwners = new Set<string>()
+export function resetSyncBaseline(owner: string) {
+  if (!loadedOwners.has(owner) || useAppStore.getState().products.length === 0) { localStorage.removeItem(checkpointKey(owner)); loadedOwners.add(owner) }
+}
 let backgroundTimer: ReturnType<typeof setInterval> | null = null
-
-function init() {
-  if (initialized || typeof window === 'undefined') return
-  initialized = true
-
-  // Offline -> online transitions auto-trigger a sync. subscribeOnline only
-  // notifies on an actual (debounced) state change, so this fires once per
-  // transition rather than repeatedly.
-  subscribeOnline((online) => {
-    if (online) {
-      void syncNow()
-    }
-  })
-
-  // Periodic background sync so items queued while nominally online (e.g. a
-  // transient request failure that fell back to the offline queue) don't
-  // wait indefinitely for an offline->online reconnect event that may never
-  // come.
-  backgroundTimer = setInterval(() => {
-    if (isOnline() && getPendingCount() > 0) {
-      void syncNow()
-    }
-  }, BACKGROUND_SYNC_INTERVAL_MS)
+if (typeof window !== 'undefined') {
+  subscribeOnline(online => { if (online) void syncNow() })
+  backgroundTimer = setInterval(() => { if (isOnline() && getActiveUser()) void syncNow() }, 60_000)
 }
-
-init()
-
-// Exposed for completeness/tests; not required for normal app usage since
-// this module has a single long-lived instance for the app's lifetime.
-export function stopBackgroundSync(): void {
-  if (backgroundTimer) {
-    clearInterval(backgroundTimer)
-    backgroundTimer = null
-  }
-}
+export function stopBackgroundSync() { if (backgroundTimer) clearInterval(backgroundTimer); backgroundTimer = null }

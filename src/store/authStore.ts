@@ -8,7 +8,7 @@ import {
   setStoredUser,
   clearStoredAuth,
 } from '../utils/authStorage'
-import { clearQueue as clearOfflineQueue, setActiveUser as setOfflineQueueUser } from './offlineQueue'
+import { setActiveUser as setOfflineQueueUser } from './offlineQueue'
 import { useAppStore } from './appStore'
 import type { User } from '../types'
 
@@ -133,15 +133,7 @@ export function clearSession(): void {
   clearApiCache()
   useAuthStore.setState({ token: '', refreshToken: '', user: null, isAuthenticated: false })
   void clearStoredAuth()
-  // Offline queue: drop whatever is still queued for the outgoing user, then
-  // point the queue back at the unscoped/no-user key. This is a deliberate
-  // choice not to attempt a final sync first — this app has no existing
-  // "sync on logout" step, and adding one here would risk hanging/failing
-  // the logout flow on a flaky connection. The trade-off (any genuinely
-  // unsynced edits from this session are lost on logout) is preferred over
-  // the alternative: leaving them queued risks a future user's session
-  // flushing them, which is the actual security bug being fixed.
-  clearOfflineQueue()
+  // Pending writes remain encrypted under the outgoing account.
   setOfflineQueueUser(null)
   // Product/inventory/dashboard/snapshot data is user-visible and
   // action-affecting (prices, stock) — reset it so a fast account switch on

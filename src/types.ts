@@ -50,6 +50,9 @@ export type AuthResponse = AuthSuccess | AuthPhoneVerification | AuthOtpChalleng
 export type ProductUnit = 'dona' | 'kg'
 
 export interface Product {
+  stockEpoch?: number;
+  serverVersion?: number
+  baseVersion?: number
   _id: string
   localId?: string
   name: string
@@ -72,6 +75,8 @@ export interface Product {
 }
 
 export interface InventoryItem {
+  serverVersion?: number
+  localId?: string
   _id: string
   productId: string
   product?: Product
@@ -207,7 +212,18 @@ export interface DatabaseStats {
   collections?: Record<string, { count: number; size: string }>
 }
 
+export type InventoryOperation = {
+  id: string; deviceId: string; occurredAt: string
+} & ({ kind: 'sale'; date: string; lines: { productId: string; quantity: number; lineRevenue: number; expectedBuyPrice: number; expectedUnit: ProductUnit; expectedStockEpoch: number }[] }
+  | { kind: 'restock'; productId: string; quantity: number }
+  | { kind: 'adjustment'; date: string; items: { productId: string; currentQuantity: number; baseVersion: number; lineRevenue?: number; note?: string }[] })
+
 export interface SyncPayload {
+  protocolVersion?: 2
+  checkpoint?: string
+  cursor?: string
+  limit?: number
+  operations?: InventoryOperation[]
   products?: Product[]
   inventory?: InventoryItem[]
   // Backend accepts either key for daily snapshots (sync.service.ts does
@@ -216,7 +232,6 @@ export interface SyncPayload {
   daily?: DailySnapshot[]
   snapshots?: DailySnapshot[]
   lastSyncAt?: string
-  limit?: number
   offset?: number
 }
 
@@ -227,6 +242,11 @@ export interface SyncRejectedItem {
 }
 
 export interface SyncResponse {
+  protocolVersion?: 2
+  nextCursor?: string | null
+  checkpoint?: string | null
+  acknowledged?: { entity: string; localId: string; updatedAt?: string }[]
+  deletedProducts?: { localId: string; productId: string; serverVersion: number }[]
   accepted: {
     products: number
     inventory: number
