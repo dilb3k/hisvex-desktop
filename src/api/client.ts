@@ -84,12 +84,35 @@ function scheduleHealthRecheck() {
   }, HEALTH_RECHECK_INTERVAL_MS)
 }
 
+// Railway's own edge router returns a plain 404 when the service itself is
+// torn down / asleep / not deployed — e.g. {"status":"error","code":404,
+// "message":"Application not found","request_id":"..."}. By status code
+// alone this is indistinguishable from a completely normal business 404
+// ("Mahsulot topilmadi"/404 from a real, running backend) — only fail over
+// when the platform's own signature is actually present; an ordinary 4xx
+// must reach the caller unchanged and must never be retried against backup.
+const RAILWAY_NOT_FOUND_BODY_MARKER = 'Application not found'
+function isRailwayPlatformNotFound(error: AxiosError): boolean {
+  const response = error.response
+  if (!response) return false
+  if (response.headers?.['x-railway-router'] !== undefined) return true
+  const data = response.data
+  if (typeof data === 'string') return data.includes(RAILWAY_NOT_FOUND_BODY_MARKER)
+  if (data && typeof data === 'object') {
+    try { return JSON.stringify(data).includes(RAILWAY_NOT_FOUND_BODY_MARKER) } catch { return false }
+  }
+  return false
+}
+
 // Only a server that's actually unreachable/down should fail over — a 4xx is
 // the client's own fault (bad input, expired auth, not found) and retrying it
-// against a second server would just get the same answer twice.
+// against a second server would just get the same answer twice. The one
+// exception is a confirmed Railway-platform 404 (see above), which really
+// does mean "nothing is listening here", not "the app said no".
 function isFailoverTriggering(error: AxiosError): boolean {
   const status = error.response?.status
   if (status === 502 || status === 503 || status === 504) return true
+  if (status === 404 && isRailwayPlatformNotFound(error)) return true
   // No response reached us at all — a genuine connection-level failure, not
   // this client's own request timeout (ECONNABORTED is handled separately,
   // deliberately excluded here: a slow-but-alive server isn't "down" the way
