@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useSyncExternalStore } from 'react'
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import { getLanguage, subscribeLanguage } from './i18n'
 import { setUnauthorizedHandler, setTokensRefreshedHandler } from './api/client'
 import { initBusinessDay } from './utils/businessDay'
 import { LoginScreen } from './screens/LoginScreen'
+import { ProcurementScreen } from './screens/ProcurementScreen'
 import { ProductsScreen } from './screens/ProductsScreen'
 import { InventoryScreen } from './screens/InventoryScreen'
 import { SalesScreen } from './screens/SalesScreen'
@@ -18,22 +19,32 @@ import { UpdateAvailableModal } from './components/UpdateAvailableModal'
 import { Titlebar, isWin, BAR_HEIGHT } from './components/Titlebar'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuthStore()
+  const { isAuthenticated, isLoading, user } = useAuthStore()
+  const location = useLocation()
   if (isLoading) return <SplashScreen />
   if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (user?.scope === 'procurement' && !['/products', '/procurements'].includes(location.pathname)) return <Navigate to="/procurements" replace />
   return <>{children}</>
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuthStore()
+  const { isAuthenticated, isLoading, user } = useAuthStore()
+  const location = useLocation()
   if (isLoading) return <SplashScreen />
-  if (isAuthenticated) return <Navigate to="/" replace />
+  if (isAuthenticated) return <Navigate to={user?.scope === 'procurement' ? '/procurements' : '/'} replace />
+  if (user?.scope === 'procurement' && !['/products', '/procurements'].includes(location.pathname)) return <Navigate to="/procurements" replace />
   return <>{children}</>
+}
+
+function CatalogRoute() {
+  const scoped = useAuthStore(s => s.user?.scope === 'procurement')
+  return scoped ? <ProcurementScreen catalogOnly /> : <ProductsScreen />
 }
 
 export function App() {
   const logout = useAuthStore((s) => s.logout)
   const hydrate = useAuthStore((s) => s.hydrate)
+  const persistenceError = useAuthStore((s) => s.persistenceError)
 
   useEffect(() => { hydrate() }, [hydrate])
 
@@ -70,6 +81,7 @@ export function App() {
     // mount for every screen exactly once.
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Titlebar />
+      {persistenceError && <div role="alert" style={{ padding: 12, color: '#fff', background: '#9f1239', marginTop: isWin ? BAR_HEIGHT : 0 }}>{persistenceError}</div>}
       {/* Titlebar is `position: fixed`, so it takes up no space of its own
           here — this padding is what stops it (now permanently visible,
           not just a hover sliver) from sitting on top of the first ~36px
@@ -84,7 +96,8 @@ export function App() {
               <Route path="/login" element={<PublicRoute><LoginScreen /></PublicRoute>} />
               <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
                 <Route index element={<StatisticsScreen />} />
-                <Route path="products" element={<ProductsScreen />} />
+                <Route path="products" element={<CatalogRoute />} />
+                <Route path="procurements" element={<ProcurementScreen />} />
                 <Route path="inventory" element={<InventoryScreen />} />
                 <Route path="sales" element={<SalesScreen />} />
                 <Route path="debtors" element={<DebtorsScreen />} />

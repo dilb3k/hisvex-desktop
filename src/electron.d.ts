@@ -11,6 +11,10 @@ interface ElectronAPI {
   clearStaleToken: () => Promise<void>
   getUser: () => Promise<unknown>
   setUser: (user: unknown) => Promise<void>
+  setAuth: (auth: { token: string; refreshToken: string; user: unknown }) => Promise<void>
+  clearAuth: () => Promise<void>
+  getAuth: () => Promise<{ token: string; refreshToken: string; user: unknown }>
+  setTokens: (tokens: { token: string; refreshToken: string; expectedToken: string }) => Promise<void>
   clearUser: () => Promise<void>
   getTheme: () => Promise<string>
   setTheme: (theme: string) => Promise<void>

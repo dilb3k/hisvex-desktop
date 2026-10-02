@@ -11,7 +11,7 @@ function load(file,mocks={},extra={}) {
   // setInterval/clearInterval are no-ops: client.ts's health-recheck timer
   // isn't what this suite is testing, and a real 3-minute interval would
   // otherwise keep the test process alive.
-  vm.runInNewContext(code,{exports,require:name=>mocks[name]??require(name),crypto:webcrypto,console,setInterval:()=>0,clearInterval:()=>{},...extra})
+  vm.runInNewContext(code,{exports,require:name=>mocks[name]??(name==='../utils/manualMutationIntent'?load('src/utils/manualMutationIntent.ts'):require(name)),crypto:webcrypto,TextEncoder,console,setInterval:()=>0,clearInterval:()=>{},...extra})
   return exports
 }
 
@@ -29,19 +29,19 @@ function mockAdapter(responses) {
   }
 }
 
-function setup(responses) {
+function setup(responses, storage = new Map()) {
   const mods=load('src/api/client.ts',{
     './nativeAdapter':{nativeBackendAdapter:async()=>{throw Error('not used in this test')}},
     '../store/offlineQueue':{getActiveUser:()=>'owner-1'},
     '../constants':{API_BASE_URL:'https://primary.test/api',API_BACKUP_URL:'https://backup.test/api'},
     '../utils/businessDay':{getBusinessDate:()=>'2026-10-01'},
     '../utils/authStorage':{setStoredToken:async()=>{},setStoredRefreshToken:async()=>{},setStoredStaleToken:async()=>{}},
-  })
+  },{localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)}})
   const api=mods.default
   const calls=[]
   const adapter=mockAdapter(responses)
-  api.defaults.adapter=async config=>{calls.push({baseURL:config.baseURL,method:config.method});return adapter(config)}
-  return {api,calls}
+  api.defaults.adapter=async config=>{calls.push({baseURL:config.baseURL,method:config.method,id:config.headers['Idempotency-Key']});return adapter(config)}
+  return {api,calls,storage}
 }
 
 const RAILWAY_404_BODY={status:'error',code:404,message:'Application not found',request_id:'vQjzBoa2QEiUe6rGs_GTAg'}
@@ -97,3 +97,29 @@ test('502/503/504 still fail over exactly as before (regression guard)',async()=
   assert.equal(res.data.ok,true)
   assert.equal(calls.length,2)
 })
+test('a business error mentioning Application not found cannot masquerade as a platform outage',async()=>{
+ const {api,calls}=setup([{status:404,data:{success:false,error:{message:'Application not found'}},headers:{'x-railway-router':'edge'}}]);
+ await assert.rejects(api.get('/products/missing'),/Application not found/);assert.equal(calls.length,1);
+});
+
+test('manual restock timeout retains ID across renderer restart and known success ends the intent',async()=>{
+ const first=setup([{status:503,data:{success:false,error:{code:'WRITE_OUTCOME_UNKNOWN'}}}]);
+ await assert.rejects(first.api.patch('/products/p/restock',{quantity:2}));const id=first.calls[0].id;assert.ok(id);assert.equal(first.storage.size,1);
+ const retry=setup([{status:200,data:{success:true,data:{ok:true}}}],first.storage);
+ await retry.api.patch('/products/p/restock',{quantity:2});assert.equal(retry.calls[0].id,id);assert.equal(first.storage.size,0);
+ await retry.api.patch('/products/p/restock',{quantity:2});assert.notEqual(retry.calls[1].id,id);
+});
+test('changed manual payload never leaves renderer while the previous result is unknown',async()=>{
+ const h=setup([{status:503,data:{success:false,error:{code:'WRITE_OUTCOME_UNKNOWN'}}}]);
+ await assert.rejects(h.api.post('/debtors/d/adjust',{type:'add',amount:10}));
+ await assert.rejects(h.api.post('/debtors/d/adjust',{type:'add',amount:20}),/oldingi/);assert.equal(h.calls.length,1);
+});
+test('platform write failure switches future explicit same-ID retry to Render without replaying the first request',async()=>{
+ const h=setup([{status:404,data:RAILWAY_404_BODY},{status:200,data:{success:true,data:{ok:true}}}]);
+ const config={headers:{'Idempotency-Key':'test-stable-batch'}};await assert.rejects(h.api.post('/procurements',{items:[]},config));assert.equal(h.calls.length,1);
+ await h.api.post('/procurements',{items:[]},config);assert.equal(h.calls.length,2);assert.equal(h.calls[1].baseURL,'https://backup.test/api');assert.equal(h.calls[1].id,h.calls[0].id);
+});
+test('a read started on the already active backup is attempted once even when that host is down',async()=>{
+ const h=setup([{status:503,data:'down'}]);await assert.rejects(h.api.get('/auth/me'));assert.equal(h.calls.length,2);
+ await assert.rejects(h.api.get('/auth/me'));assert.equal(h.calls.length,3);
+});

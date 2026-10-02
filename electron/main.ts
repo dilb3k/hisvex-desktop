@@ -4,6 +4,11 @@ import path from 'path'
 import Store from 'electron-store'
 import { initIpcHandlers } from './ipc'
 
+// One renderer owns the local durable queues and auth store per OS profile.
+// A second app process must not race those files or create a second intent ID.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
 const store = new Store({
   encryptionKey: 'hisvex-store-key',
   schema: {
@@ -23,6 +28,13 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 const isWin = process.platform === 'win32'
 
 let mainWindow: BrowserWindow | null = null
+
+app.on('second-instance', () => {
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+})
 
 function createWindow(): void {
   const bounds = store.get('windowBounds') as { width: number; height: number }
@@ -109,3 +121,4 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
+}

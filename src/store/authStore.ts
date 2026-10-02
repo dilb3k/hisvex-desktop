@@ -3,9 +3,9 @@ import { setApiToken, setRefreshToken, clearApiCache, authApi } from '../api/cli
 import { syncBusinessDayFromServer } from '../utils/businessDay'
 import {
   readStoredAuth,
-  setStoredToken,
-  setStoredRefreshToken,
   setStoredUser,
+  writeStoredAuth,
+  tokenExpiry,
   clearStoredAuth,
 } from '../utils/authStorage'
 import { setActiveUser as setOfflineQueueUser } from './offlineQueue'
@@ -29,17 +29,11 @@ function applyBusinessDayHour(user: User | null | undefined) {
   })
 }
 
-function persistToken(token: string) {
-  void setStoredToken(token)
-}
-
-function persistRefreshToken(token: string) {
-  void setStoredRefreshToken(token)
-}
-
 function persistUser(user: User) {
-  void setStoredUser(withoutBlockCode(user))
+  void setStoredUser(withoutBlockCode(user)).catch(() => useAuthStore.setState({ persistenceError: 'Sessiya ma’lumotini saqlab bo‘lmadi. Disk yoki tizim keychainini tekshiring.' }))
 }
+
+let sessionGeneration = 0
 
 interface AuthState {
   token: string
@@ -47,7 +41,8 @@ interface AuthState {
   user: User | null
   isLoading: boolean
   isAuthenticated: boolean
-  setAuth: (token: string, refreshToken: string, user: User) => void
+  persistenceError: string
+  setAuth: (token: string, refreshToken: string, user: User) => Promise<void>
   setUser: (user: User) => void
   logout: () => void
   setLoading: (loading: boolean) => void
@@ -60,24 +55,34 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isLoading: true,
   isAuthenticated: false,
+  persistenceError: '',
 
-  setAuth: (token, refreshToken, user) => {
+  setAuth: async (token, refreshToken, user) => {
+    const generation = ++sessionGeneration
     const normalized = { ...user }
     if (!normalized._id && (normalized as any).id) {
       normalized._id = (normalized as any).id
     }
+    useAppStore.getState().reset()
     setApiToken(token)
     setRefreshToken(refreshToken)
-    persistToken(token)
-    persistRefreshToken(refreshToken)
-    persistUser(normalized)
+    try {
+      await writeStoredAuth({ token, refreshToken, user: withoutBlockCode(normalized) })
+      if (generation !== sessionGeneration) throw Error('Sessiya o‘zgardi')
+    } catch (error) {
+      if (generation === sessionGeneration) {
+        setApiToken(null); setRefreshToken(''); setOfflineQueueUser(null)
+        set({ token: '', refreshToken: '', user: null, isAuthenticated: false, isLoading: false })
+      }
+      throw error
+    }
     applyBusinessDayHour(normalized)
     // Scope the offline mutation queue to this user *before* anything else
     // can enqueue into it, so a shared-PC account switch never lets one
     // user's queued edits sync under another user's session (see
     // offlineQueue.ts's setActiveUser).
-    setOfflineQueueUser(normalized._id ?? null)
-    set({ token, refreshToken, user: normalized, isAuthenticated: true })
+    setOfflineQueueUser(normalized.scope === 'procurement' ? null : normalized._id ?? null)
+    set({ token, refreshToken, user: normalized, isAuthenticated: true, isLoading: false, persistenceError: '' })
   },
 
   setUser: (user) => {
@@ -92,9 +97,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   setLoading: (isLoading) => set({ isLoading }),
 
   hydrate: async () => {
+    const generation = sessionGeneration
     set({ isLoading: true })
     try {
       const stored = await readStoredAuth()
+      if (generation !== sessionGeneration) return
       if (!stored?.token) {
         set({ isLoading: false })
         return
@@ -106,13 +113,14 @@ export const useAuthStore = create<AuthState>((set) => ({
       // Same scoping as setAuth() above — a resumed session (app restart
       // without logging out) must resolve to this user's own offline queue
       // before any screen can enqueue into it.
-      setOfflineQueueUser(stored.user?._id ?? null)
+      setOfflineQueueUser(stored.user?.scope === 'procurement' ? null : stored.user?._id ?? null)
       // isAuthenticated/isLoading are finalized only once revalidation
       // below resolves, so role/blockCode-gated screens never render
       // against stale or foreign data.
       await hydrateBlockCode()
-    } catch {
-      set({ isLoading: false })
+    } catch (error) {
+      if (generation !== sessionGeneration) return
+      set({ isLoading: false, persistenceError: (error as Error).message })
     }
   },
 }))
@@ -122,6 +130,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 // the unauthorizedHandler wiring in App.tsx) so clearing logic exists in
 // exactly one place.
 export function clearSession(): void {
+  sessionGeneration++
   // Captured before anything clears it — see authApi.logout. Harmless when
   // this runs from the 401 interceptor with an already-invalid token: a 401
   // on /auth/logout is excluded from the unauthorized handler, so it cannot
@@ -132,7 +141,7 @@ export function clearSession(): void {
   setRefreshToken('')
   clearApiCache()
   useAuthStore.setState({ token: '', refreshToken: '', user: null, isAuthenticated: false })
-  void clearStoredAuth()
+  void clearStoredAuth().catch(() => useAuthStore.setState({ persistenceError: 'Sessiyaning saqlangan nusxasini o‘chirib bo‘lmadi. Disk yoki tizim keychainini tekshiring.' }))
   // Pending writes remain encrypted under the outgoing account.
   setOfflineQueueUser(null)
   // Product/inventory/dashboard/snapshot data is user-visible and
@@ -146,33 +155,38 @@ export function clearSession(): void {
 function isNetworkError(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false
   const code = (err as { code?: string }).code
-  return code === 'ERR_NETWORK' || code === 'ECONNABORTED'
+  return code === 'ERR_NETWORK' || code === 'ECONNABORTED' || code === 'REFRESH_NETWORK_ERROR' || code === 'AUTH_UNAVAILABLE'
 }
 
 async function hydrateBlockCode() {
+  const token = useAuthStore.getState().token
+  const generation = sessionGeneration
   const current = useAuthStore.getState().user
   if (!current) {
-    useAuthStore.setState({ isAuthenticated: true, isLoading: false })
+    useAuthStore.setState({ isAuthenticated: false, isLoading: false })
     return
   }
   let code: string | null = null
   try {
-    code = await window.electronAPI?.blockGet?.() ?? null
+    code = current.scope === 'procurement' ? null : await window.electronAPI?.blockGet?.() ?? null
   } catch {
     code = null
   }
+  if (generation !== sessionGeneration) return
   if (code) {
     useAuthStore.getState().setUser({ ...useAuthStore.getState().user!, blockCode: code })
   }
   try {
     const { data } = await authApi.getMe()
+    if (generation !== sessionGeneration) return
     if (data) {
-      useAuthStore.getState().setUser({ ...data, blockCode: (data as User).blockCode ?? code ?? null })
+      useAuthStore.getState().setUser({ ...data, blockCode: data.scope === 'procurement' ? null : (data as User).blockCode ?? code ?? null })
       applyBusinessDayHour(data as User)
     }
     useAuthStore.setState({ isAuthenticated: true, isLoading: false })
   } catch (err: unknown) {
-    if (isNetworkError(err)) {
+    if (generation !== sessionGeneration) return
+    if (isNetworkError(err) && (tokenExpiry(token) ?? 0) > Date.now()) {
       // offline — keep persisted user
       useAuthStore.setState({ isAuthenticated: true, isLoading: false })
     } else {

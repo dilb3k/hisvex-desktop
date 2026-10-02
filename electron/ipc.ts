@@ -100,6 +100,23 @@ export function initIpcHandlers(ipcMain: IpcMain, store: Store): void {
   handle('store:getUser', () => store.get('user', {}))
   handle('store:setUser', (_event, user: unknown) => store.set('user', user))
   handle('store:clearUser', () => store.set('user', {}))
+  handle('store:setAuth', (_event, auth: { token: string; refreshToken: string; user: Record<string, unknown> }) => {
+    if (!auth || typeof auth.token !== 'string' || !auth.token || typeof auth.refreshToken !== 'string' || !auth.user || typeof auth.user !== 'object') throw Error('Invalid auth bundle')
+    const token = encryptSecret(auth.token)
+    const refreshToken = encryptSecret(auth.refreshToken)
+    const { blockCode: _pin, verifiedDeviceIds: _devices, activeSessionId: _session, ...user } = auth.user
+    // Encrypt both secrets first, then replace the whole bundle in one store write.
+    store.set({ token, refreshToken, user })
+  })
+  handle('store:clearAuth', () => store.set({ token: '', refreshToken: '', user: {} }))
+  handle('store:getAuth', () => ({ token: decryptSecret(store.get('token', '') as string), refreshToken: decryptSecret(store.get('refreshToken', '') as string), user: store.get('user', {}) }))
+  handle('store:setTokens', (_event, tokens: { token: string; refreshToken: string; expectedToken: string }) => {
+    if (!tokens || typeof tokens.token !== 'string' || typeof tokens.refreshToken !== 'string' || typeof tokens.expectedToken !== 'string') throw Error('Invalid tokens')
+    if (decryptSecret(store.get('token', '') as string) !== tokens.expectedToken) throw Error('Stored session changed')
+    const token = encryptSecret(tokens.token)
+    const refreshToken = encryptSecret(tokens.refreshToken)
+    store.set({ token, refreshToken })
+  })
   handle('store:getTheme', () => store.get('theme', 'dark'))
   handle('store:setTheme', (_event, theme: string) => {
     store.set('theme', theme)

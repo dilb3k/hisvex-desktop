@@ -1,4 +1,6 @@
 export interface User {
+  scope?: 'procurement';
+  capabilityRole?: 'PROCUREMENT_AGENT';
   _id: string
   email?: string
   name?: string

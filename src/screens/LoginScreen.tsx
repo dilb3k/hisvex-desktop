@@ -38,6 +38,7 @@ const labelStyle: React.CSSProperties = {
 
 export function LoginScreen() {
   const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [procurementMode, setProcurementMode] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -107,7 +108,7 @@ export function LoginScreen() {
     setLoading(true)
     try {
       if (isLoginMode) {
-        const { data } = await authApi.login(username.trim(), password)
+        const { data } = await (procurementMode ? authApi.loginProcurement : authApi.login)(username.trim(), password)
 
         if (data && 'requiresVerification' in data) {
           setSessionChallengeId(data.sessionChallengeId)
@@ -123,7 +124,7 @@ export function LoginScreen() {
           return
         }
 
-        setAuth(data.token, data.refreshToken, data.user)
+        await setAuth(data.token, data.refreshToken ?? '', data.user)
       } else {
         const { data } = await authApi.register(
           username.trim(),
@@ -131,7 +132,7 @@ export function LoginScreen() {
           phoneNumber.replace(/\D/g, '') || undefined,
           Number(businessDayStartHour.trim()),
         )
-        setAuth(data.token, data.refreshToken, data.user)
+        await setAuth(data.token, data.refreshToken ?? '', data.user)
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : (isLoginMode ? t('loginError') : t('registerError'))
@@ -152,9 +153,11 @@ export function LoginScreen() {
     setError('')
     try {
       const { data } = await authApi.loginWithPhone(username.trim(), password, digits)
+      if ('requiresVerification' in data) { setSessionChallengeId(data.sessionChallengeId); setOtpCode(''); setOtpSecondsLeft(OTP_TTL_SECONDS); setOtpStep(true); setPhoneVerifyStep(false); return }
+      if ('needsPhoneVerification' in data) { setMaskedPhone(data.maskedPhone); return }
       setPhoneVerifyStep(false)
       setError(t('sessionTakenOver'))
-      setAuth(data.token, data.refreshToken, data.user)
+      await setAuth(data.token, data.refreshToken ?? '', data.user)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t('phoneRequired')
       setError(message)
@@ -173,7 +176,7 @@ export function LoginScreen() {
     try {
       const { data } = await authApi.verifySessionChallenge(sessionChallengeId, otpCode)
       setOtpStep(false)
-      setAuth(data.token, data.refreshToken, data.user)
+      await setAuth(data.token, data.refreshToken ?? '', data.user)
     } catch (err: unknown) {
       // Backend messages (410 expired / 429 too many attempts / 401 wrong
       // code with "Qolgan urinishlar: N" / 409 already used) are already
@@ -538,6 +541,7 @@ export function LoginScreen() {
                 </div>
 
                 <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {isLoginMode && <label style={labelStyle}><input type="checkbox" checked={procurementMode} onChange={e => setProcurementMode(e.target.checked)} disabled={loading}/> Bozorchi rejimi (Mahsulotlar va Kirimlar)</label>}
                   {error && (
                     <div style={{
                       borderRadius: 10, padding: 12,

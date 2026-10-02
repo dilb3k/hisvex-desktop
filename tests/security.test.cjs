@@ -35,6 +35,31 @@ test('all sensitive IPC handlers reject a remote frame and child frames; encrypt
  assert.throws(()=>handlers.get('safeStorage:encrypt')(event,'pending sale'),/unavailable/)
  available=true;handlers.get('store:setToken')(event,'secret');assert.notEqual(storage.get('token'),'secret');assert.equal(handlers.get('store:getToken')(event),'secret')
 })
+test('auth bundle is one encrypted write; partial encryption and stale refresh never overwrite stored session',()=>{
+ const handlers=new Map(),storage=new Map();let writes=0,failRefresh=false;
+ const electron={app:{isPackaged:true},safeStorage:{isEncryptionAvailable:()=>true,encryptString:s=>{if(failRefresh&&s==='refresh')throw Error('keychain failure');return Buffer.from('encrypted:'+s)},decryptString:b=>b.toString().slice(10)},BrowserWindow:{fromWebContents:()=>null},nativeTheme:{},shell:{},dialog:{}};
+ const ipc=load('electron/ipc.ts',{'electron':electron,'./trust':trust,'./backend-request':{requestBackend:async()=>({})}});
+ ipc.initIpcHandlers({handle:(name,fn)=>handlers.set(name,fn)},{get:(key,fallback)=>storage.get(key)??fallback,set:(key,value)=>{writes++;if(typeof key==='object')for(const [k,v]of Object.entries(key))storage.set(k,v);else storage.set(key,value)}});
+ const frame={url:local},event={senderFrame:frame,sender:{mainFrame:frame}},bundle={token:'access',refreshToken:'refresh',user:{_id:'A',blockCode:'1234',verifiedDeviceIds:['trusted']}};
+ failRefresh=true;assert.throws(()=>handlers.get('store:setAuth')(event,bundle),/unavailable/);assert.equal(storage.size,0);assert.equal(writes,0);
+ failRefresh=false;handlers.get('store:setAuth')(event,bundle);assert.equal(writes,1);assert.notEqual(storage.get('token'),'access');assert.equal(storage.get('user').blockCode,undefined);assert.equal(storage.get('user').verifiedDeviceIds,undefined);
+ assert.equal(handlers.get('store:getAuth')(event).token,'access');
+ assert.throws(()=>handlers.get('store:setTokens')(event,{token:'stale',refreshToken:'stale',expectedToken:'foreign'}),/changed/);assert.equal(writes,1);
+ handlers.get('store:setTokens')(event,{token:'next',refreshToken:'nextRefresh',expectedToken:'access'});assert.equal(writes,2);assert.equal(handlers.get('store:getAuth')(event).token,'next');
+ handlers.get('store:clearAuth')(event);assert.equal(writes,3);assert.equal(handlers.get('store:getAuth')(event).token,'');
+})
+test('a second Desktop process never opens shared storage and instead restores the existing window',()=>{
+ function launch(ownsLock) {
+   let stores=0,quits=0,ready;const events=new Map(),calls=[];
+   const app={isPackaged:true,requestSingleInstanceLock:()=>ownsLock,quit:()=>quits++,whenReady:()=>({then:fn=>{ready=fn}}),on:(name,fn)=>events.set(name,fn)};
+   class Window {constructor(){this.webContents={setWindowOpenHandler(){},on(){},send(){}}}loadFile(){}once(){}on(){}isMinimized(){return true}restore(){calls.push('restore')}show(){calls.push('show')}focus(){calls.push('focus')}static getAllWindows(){return []}}
+   class Store {constructor(){stores++}get(key,fallback){return key==='windowBounds'?{width:1280,height:800}:fallback}set(){}}
+   load('electron/main.ts',{'electron':{app,BrowserWindow:Window,ipcMain:{},Menu:{setApplicationMenu(){}},nativeTheme:{}},'electron-store':Store,'./trust':trust,'./ipc':{initIpcHandlers(){}}});
+   return {events,calls,getStores:()=>stores,getQuits:()=>quits,getReady:()=>ready};
+ }
+ const secondary=launch(false);assert.equal(secondary.getStores(),0);assert.equal(secondary.getQuits(),1);assert.equal(secondary.getReady(),undefined);
+ const primary=launch(true);assert.equal(primary.getStores(),1);primary.getReady()();primary.events.get('second-instance')();assert.deepEqual(primary.calls,['restore','show','focus']);
+})
 test('native Axios adapter preserves multipart, HTTP conflicts and timeout classification',async()=>{
  const axios=require('axios');let request;let result={status:200,statusText:'OK',headers:{'content-type':'application/json'},data:'{"ok":true}'}
  const {nativeBackendAdapter}=load('src/api/nativeAdapter.ts',{}, {window:{electronAPI:{requestBackend:async r=>{request=r;return result}}}})

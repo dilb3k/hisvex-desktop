@@ -1,6 +1,7 @@
 import { nativeBackendAdapter } from "./nativeAdapter";
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import rawAxios from 'axios'
+import { createManualMutationRegistry, isDurableManualMutation, isDefinitiveMutationRejection, type ManualIntent } from '../utils/manualMutationIntent'
 import type {
   AuthResponse,
   AuthSuccess,
@@ -22,7 +23,7 @@ import type {
 import { getActiveUser } from '../store/offlineQueue'
 import { API_BASE_URL, API_BACKUP_URL } from '../constants'
 import { getBusinessDate } from '../utils/businessDay'
-import { setStoredToken, setStoredRefreshToken, setStoredStaleToken } from '../utils/authStorage'
+import { setStoredTokens, setStoredStaleToken } from '../utils/authStorage'
 
 if(typeof window!=='undefined'&&window.electronAPI?.requestBackend) axios.defaults.adapter=nativeBackendAdapter
 
@@ -95,6 +96,9 @@ const RAILWAY_NOT_FOUND_BODY_MARKER = 'Application not found'
 function isRailwayPlatformNotFound(error: AxiosError): boolean {
   const response = error.response
   if (!response) return false
+  let appBody = response.data;
+  if (typeof appBody === 'string') { try { appBody = JSON.parse(appBody); } catch {} }
+  if (appBody && typeof appBody === 'object' && typeof (appBody as {success?:unknown}).success === 'boolean') return false;
   if (response.headers?.['x-railway-router'] !== undefined) return true
   const data = response.data
   if (typeof data === 'string') return data.includes(RAILWAY_NOT_FOUND_BODY_MARKER)
@@ -132,7 +136,7 @@ function isHeavyRequest(config: InternalAxiosRequestConfig): boolean {
 
 function sessionIdentity(token: string | null): string {
   if (!token) return ''
-  try { const p=JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));return `${p.userId}:${p.sessionId??''}` } catch { return token }
+  try { const p=JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));return `${p.userId}:${p.sessionId??''}:${p.scope??'full'}:${p.securityVersion??0}` } catch { return token }
 }
 let authEpoch=0
 let apiToken: string | null = null
@@ -172,6 +176,17 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
+let manualLock: Promise<unknown> = Promise.resolve()
+function manualRegistry(owner: string, epoch: number) {
+  const assert = () => { if (owner !== getActiveUser() || epoch !== authEpoch) throw Error('Hisob yoki sessiya o‘zgardi') }
+  const key = (slot: string) => `hisvex-manual-v1:${owner}:${slot}`
+  return createManualMutationRegistry({
+    read: async slot => { const raw = localStorage.getItem(key(slot)); return raw ? JSON.parse(raw) as ManualIntent : null },
+    write: async (slot, value) => { assert(); if (value) localStorage.setItem(key(slot), JSON.stringify(value)); else localStorage.removeItem(key(slot)) },
+    lock: (_slot, work) => { const run = manualLock.catch(() => {}).then(work); manualLock = run; return run },
+  }, () => crypto.randomUUID(), async text => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), n => n.toString(16).padStart(2, '0')).join(''), assert)
+}
+
 function normalizeIds(obj: unknown): void {
   if (!obj || typeof obj !== 'object') return
   if (Array.isArray(obj)) { obj.forEach(normalizeIds); return }
@@ -180,7 +195,7 @@ function normalizeIds(obj: unknown): void {
   for (const v of Object.values(o)) { if (v && typeof v === 'object') normalizeIds(v) }
 }
 
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   if((config as any)._authEpoch!==undefined && (config as any)._authEpoch!==authEpoch) throw Error('Sessiya o‘zgardi')
   ;(config as any)._authEpoch=authEpoch
   ;(config as any)._cacheGeneration=cacheGeneration
@@ -188,6 +203,15 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (requestOwner && requestOwner !== getActiveUser()) throw new Error('Hisob o‘zgardi')
   if (getActiveUser()) config.headers['X-Account-ID'] = getActiveUser()
   config.headers['X-Client-Protocol']='2'
+  if (!config.headers['Idempotency-Key'] && isDurableManualMutation(config.method, config.url)) {
+    const owner = getActiveUser()
+    if (!owner) throw Error('Avval hisobga kiring')
+    const registry = manualRegistry(owner, authEpoch)
+    const slot = `${config.method}:${config.url}`
+    const intent = await registry.claim(slot, { body: typeof config.data === 'string' ? JSON.parse(config.data) : config.data, params: config.params })
+    config.headers['Idempotency-Key'] = intent.id
+    ;(config as any)._manualIntent = { registry, slot, id: intent.id }
+  }
   if(!['get','head','options'].includes(config.method??'get')) config.headers['Idempotency-Key'] ??= crypto.randomUUID()
   if (apiToken) {
     config.headers.Authorization = `Bearer ${apiToken}`
@@ -225,7 +249,7 @@ function handleSessionExpired(
   // product/stock preview on the phone-verification screen. Stash it
   // before clearSession (below) wipes the live token.
   if (code === 'SESSION_REPLACED' && apiToken) {
-    void setStoredStaleToken(apiToken)
+    void setStoredStaleToken(apiToken).catch(() => {})
   }
 
   // Token/refreshToken/user clearing is owned by the shared session-clear
@@ -245,9 +269,11 @@ function handleSessionExpired(
 }
 
 api.interceptors.response.use(
-  (response) => {
+  async (response) => {
     if((response.config as any)._authEpoch!==authEpoch) throw Error('Hisob yoki sessiya o‘zgardi')
     if (response.config.headers['X-Account-ID'] && response.config.headers['X-Account-ID'] !== getActiveUser()) throw new Error('Hisob o‘zgardi')
+    const manual = (response.config as any)._manualIntent
+    if (manual && response.status !== 202 && response.data?.success !== false) await manual.registry.acknowledge(manual.slot, manual.id)
     const body = response.data
     if (body && typeof body === 'object' && 'success' in body && 'data' in body) {
       response.data = body.data
@@ -264,8 +290,10 @@ api.interceptors.response.use(
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean; _failoverRetried?: boolean }
     if(originalRequest && (originalRequest as any)._authEpoch!==authEpoch) return Promise.reject(Error('Hisob yoki sessiya o‘zgardi'))
     if (originalRequest?.headers['X-Account-ID'] && originalRequest.headers['X-Account-ID'] !== getActiveUser()) return Promise.reject(new Error('Hisob o‘zgardi'))
+    const manual = (originalRequest as any)?._manualIntent
+    if (manual && isDefinitiveMutationRejection(error.response?.status, error.response?.data)) await manual.registry.acknowledge(manual.slot, manual.id)
     const url = originalRequest?.url ?? ''
-    const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh') || url.includes('/auth/logout')
+    const isAuthEndpoint = url.includes('/auth/verify-session-challenge') || url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh') || url.includes('/auth/logout')
 
     // Primary looks down (502/503/504, or unreachable outright) — resend this
     // exact request (headers, auth, body — including a FormData image upload,
@@ -273,7 +301,7 @@ api.interceptors.response.use(
     // backup immediately. Applies to auth calls too. Only ever retried once
     // per request, so a backup that's *also* down surfaces as a normal error
     // instead of looping.
-    if (originalRequest && ['get', 'head', 'options'].includes(originalRequest.method ?? '') && !originalRequest._failoverRetried && isFailoverTriggering(error)) {
+    if (originalRequest && originalRequest.baseURL === API_BASE_URL && ['get', 'head', 'options'].includes(originalRequest.method ?? '') && !originalRequest._failoverRetried && isFailoverTriggering(error)) {
       originalRequest._failoverRetried = true
       if (!isPrimaryDown) {
         isPrimaryDown = true
@@ -284,11 +312,17 @@ api.interceptors.response.use(
       originalRequest.baseURL = API_BACKUP_URL
       return api(originalRequest)
     }
+    if (originalRequest?.baseURL === API_BASE_URL && !isPrimaryDown && isFailoverTriggering(error)) {
+      isPrimaryDown = true
+      scheduleHealthRecheck()
+      reportFailoverEvent('failover', 'railway', 'render')
+    }
 
     if (error.response?.status === 401 && !isAuthEndpoint && apiRefreshToken && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true
       const refreshEpoch=authEpoch
       const refreshingToken=apiRefreshToken
+      const previousToken=apiToken ?? ''
       const pending = refreshPromise ?? (refreshPromise = (async () => {
         try {
           const res = await rawAxios.post(`${activeApiBaseUrl()}/auth/refresh`, { refreshToken: refreshingToken }, { timeout: DEFAULT_TIMEOUT_MS })
@@ -298,10 +332,10 @@ api.interceptors.response.use(
           const newToken: string = data.token
           const newRefresh: string = data.refreshToken
 
+          await setStoredTokens(newToken, newRefresh, previousToken)
+          if(refreshEpoch!==authEpoch) return 'changed' as const
           apiToken = newToken
           apiRefreshToken = newRefresh
-          void setStoredToken(newToken)
-          void setStoredRefreshToken(newRefresh)
           tokensRefreshedHandler?.(newToken, newRefresh)
           return 'ok' as const
         } catch (refreshError:any) {
@@ -359,11 +393,12 @@ api.interceptors.response.use(
 )
 
 export const authApi = {
+  loginProcurement: (username: string, password: string) => api.post<AuthSuccess>('/auth/login/procurement', { username, password }),
   login: (username: string, password: string) =>
     api.post<AuthResponse>('/auth/login', { username, password, deviceId: getDeviceId() }),
 
   loginWithPhone: (username: string, password: string, phone_number: string) =>
-    api.post<AuthSuccess>('/auth/login/verify-phone', { username, password, phone_number, deviceId: getDeviceId() }),
+    api.post<AuthResponse>('/auth/login/verify-phone', { username, password, phone_number, deviceId: getDeviceId() }),
 
   // Completes the AuthOtpChallenge path login() can now return — see
   // types.ts. Success shape is identical to a normal login.
@@ -570,6 +605,19 @@ export function getProductImageSrc(
   if (!product) return undefined
   if (product.imageUrl) return product.imageUrl
   return resolveImageUrl(product.image, product.imageHash)
+}
+
+
+export const procurementApi = {
+  products: async () => {
+    const { data } = await api.get<Product[]>('/products')
+    return data.map(p => ({id:p.localId ?? p._id,name:p.name,unit:(p.unit ?? 'dona') as 'dona'|'kg',quantity:p.quantity ?? 0,buyPrice:p.buyPrice ?? 0}))
+  },
+  list: async () => (await api.get<{localId:string;date:string;totalCost:number}[]>('/procurements')).data,
+  submit: async (id: string, items: import('../utils/procurementIntent').ProcurementItem[]) => {
+    const { data } = await api.post<{procurement:{localId:string}}>('/procurements', {items}, {headers:{'Idempotency-Key':id}})
+    return data.procurement
+  },
 }
 
 export default api

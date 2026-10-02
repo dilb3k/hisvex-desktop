@@ -1,114 +1,60 @@
 import type { User } from '../types'
 
-// Single source of truth for auth persistence (token/refreshToken/user).
-// Backed by the electron-store via IPC (electron/ipc.ts + electron/preload.ts),
-// never plaintext localStorage.
+// Credentials cross the trusted IPC bridge and are encrypted by the OS keychain.
+function bridge() {
+  if (!window.electronAPI) throw Error('Xavfsiz Desktop saqlovi mavjud emas')
+  return window.electronAPI
+}
 
 function normalizeUser(raw: unknown): User | null {
   if (!raw || typeof raw !== 'object') return null
-  const parsed = raw as Record<string, unknown>
+  const parsed = { ...(raw as Record<string, unknown>) }
   if (!parsed._id && !parsed.id) return null
-  if (!parsed._id && parsed.id) parsed._id = parsed.id
+  if (!parsed._id) parsed._id = parsed.id
   return parsed as unknown as User
 }
 
-export async function getStoredToken(): Promise<string> {
-  try {
-    return (await window.electronAPI?.getToken?.()) || ''
-  } catch {
-    return ''
-  }
+export const getStoredToken = async () => (await bridge().getToken()) || ''
+export const setStoredToken = async (token: string) => bridge().setToken(token)
+export const clearStoredToken = async () => bridge().clearToken()
+export const getStoredRefreshToken = async () => (await bridge().getRefreshToken()) || ''
+export const setStoredRefreshToken = async (token: string) => bridge().setRefreshToken(token)
+export const clearStoredRefreshToken = async () => bridge().clearRefreshToken()
+export const getStoredStaleToken = async () => (await bridge().getStaleToken()) || ''
+export const setStoredStaleToken = async (token: string) => bridge().setStaleToken(token)
+export const clearStoredStaleToken = async () => bridge().clearStaleToken()
+export const getStoredUser = async () => normalizeUser(await bridge().getUser())
+export const setStoredUser = async (user: User) => bridge().setUser(user)
+export const clearStoredUser = async () => bridge().clearUser()
+
+export interface StoredAuth { token: string; refreshToken: string; user: User | null }
+
+export async function writeStoredAuth(auth: StoredAuth): Promise<void> {
+  await bridge().setAuth(auth)
+}
+export async function setStoredTokens(token: string, refreshToken: string, expectedToken: string): Promise<void> {
+  await bridge().setTokens({ token, refreshToken, expectedToken })
 }
 
-export async function setStoredToken(token: string): Promise<void> {
+export function tokenExpiry(token: string): number | null {
   try {
-    await window.electronAPI?.setToken?.(token)
-  } catch {}
-}
-
-export async function clearStoredToken(): Promise<void> {
-  try {
-    await window.electronAPI?.clearToken?.()
-  } catch {}
-}
-
-export async function getStoredRefreshToken(): Promise<string> {
-  try {
-    return (await window.electronAPI?.getRefreshToken?.()) || ''
-  } catch {
-    return ''
-  }
-}
-
-export async function setStoredRefreshToken(token: string): Promise<void> {
-  try {
-    await window.electronAPI?.setRefreshToken?.(token)
-  } catch {}
-}
-
-export async function clearStoredRefreshToken(): Promise<void> {
-  try {
-    await window.electronAPI?.clearRefreshToken?.()
-  } catch {}
-}
-
-// See electron/ipc.ts's store:*StaleToken — kept apart from the normal
-// token so the phone-verification screen's read-only "view products" link
-// can use it even after the live session was replaced elsewhere.
-export async function getStoredStaleToken(): Promise<string> {
-  try {
-    return (await window.electronAPI?.getStaleToken?.()) || ''
-  } catch {
-    return ''
-  }
-}
-
-export async function setStoredStaleToken(token: string): Promise<void> {
-  try {
-    await window.electronAPI?.setStaleToken?.(token)
-  } catch {}
-}
-
-export async function clearStoredStaleToken(): Promise<void> {
-  try {
-    await window.electronAPI?.clearStaleToken?.()
-  } catch {}
-}
-
-export async function getStoredUser(): Promise<User | null> {
-  try {
-    const raw = await window.electronAPI?.getUser?.()
-    return normalizeUser(raw)
-  } catch {
-    return null
-  }
-}
-
-export async function setStoredUser(user: User): Promise<void> {
-  try {
-    await window.electronAPI?.setUser?.(user)
-  } catch {}
-}
-
-export async function clearStoredUser(): Promise<void> {
-  try {
-    await window.electronAPI?.clearUser?.()
-  } catch {}
-}
-
-export interface StoredAuth {
-  token: string
-  refreshToken: string
-  user: User | null
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : null
+  } catch { return null }
 }
 
 export async function readStoredAuth(): Promise<StoredAuth | null> {
-  const token = await getStoredToken()
+  const stored = await bridge().getAuth()
+  const token = stored.token
   if (!token) return null
-  const [refreshToken, user] = await Promise.all([getStoredRefreshToken(), getStoredUser()])
+  const refreshToken = stored.refreshToken
+  const user = normalizeUser(stored.user)
+  let owner: string | undefined
+  try { owner = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).userId } catch {}
+  if (!user || !owner || owner !== user._id) throw Error('Saqlangan sessiya hisobga mos emas. Qayta kiring.')
   return { token, refreshToken, user }
 }
 
 export async function clearStoredAuth(): Promise<void> {
-  await Promise.all([clearStoredToken(), clearStoredRefreshToken(), clearStoredUser()])
+  await bridge().clearAuth()
 }

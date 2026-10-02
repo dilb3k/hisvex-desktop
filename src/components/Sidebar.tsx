@@ -26,6 +26,7 @@ import { syncNow } from '../store/syncEngine'
 const navItems = [
   { to: '/', icon: BarChart3, labelKey: 'statistics' as const, roles: ['superAdmin', 'admin'] },
   { to: '/products', icon: Package, labelKey: 'products' as const, roles: ['superAdmin', 'admin'] },
+  { to: '/procurements', icon: ClipboardList, labelKey: 'procurements' as const, roles: ['superAdmin', 'admin'] },
   { to: '/inventory', icon: ClipboardList, labelKey: 'inventory' as const, roles: ['superAdmin', 'admin'] },
   { to: '/sales', icon: ShoppingCart, labelKey: 'sales' as const, roles: ['superAdmin', 'admin'] },
   { to: '/debtors', icon: Users, labelKey: 'debtors' as const, roles: ['superAdmin', 'admin'] },
@@ -71,10 +72,11 @@ export function Sidebar() {
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle')
   const location = useLocation()
 
-  const visibleItems = navItems.filter(item => item.roles.includes(user?.role || ''))
+  const visibleItems = navItems.filter(item => (user?.scope === 'procurement' ? ['/products','/procurements'].includes(item.to) : item.roles.includes(user?.role || '')))
   const active = (to: string) => to === '/' ? location.pathname === '/' : location.pathname.startsWith(to)
 
   const handleRefresh = async () => {
+    if (user?.scope === 'procurement') { window.dispatchEvent(new Event('hisvex-procurement-refresh')); return }
     setRefreshing(true)
     try { await refreshAll() } finally { setRefreshing(false) }
   }
