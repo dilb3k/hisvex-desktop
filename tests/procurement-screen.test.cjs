@@ -106,8 +106,8 @@ function screen({
         { localId: 'old', date: '2026-10-03T10:00:00Z', totalCost: 25000 },
       ];
     },
-    submit: async (id, items) => {
-      submissions.push({ id, items: copy(items) });
+    submit: async (id, items, supplier) => {
+      submissions.push({ id, items: copy(items), ...(supplier ? {supplier} : {}) });
       return send(id, items);
     },
   };
@@ -167,6 +167,8 @@ function screen({
       if (name === 'next/link') return { default: 'a' };
       if (name === 'react-router-dom') return { Link: 'a' };
       if (name.endsWith('procurement.css')) return {};
+      if (name.endsWith('ProcurementInsights')) return { ProcurementKpis: 'ProcurementKpis', ProcurementTools: 'ProcurementTools', PriceAlert: 'PriceAlert', ProcurementHistory: 'ProcurementHistory' };
+      if (name.endsWith('procurementTypes')) return { procurementQuantity: items => items.reduce((v,i) => ({...v,[i.unit]:v[i.unit]+i.quantity}),{dona:0,kg:0}) };
       if (name.endsWith('procurementIntent')) return intentContext.exports;
       if (name.endsWith('/api') || name.endsWith('/api/client'))
         return { procurementApi: api, apiClient: nativeApi };
@@ -405,7 +407,7 @@ test('history failure does not hide a successfully loaded catalog or claim empty
   await ui.settle();
   await ui.chooseExisting();
   assert.match(ui.text(), /Olma Golden/);
-  assert.match(ui.text(), /Kirimlar tarixi yuklanmadi/);
+  assert.match(ui.find(n=>n.type==='ProcurementHistory')[0].props.error, /Kirimlar tarixi yuklanmadi/);
   assert.doesNotMatch(ui.text(), /Hali tasdiqlangan kirim yo‘q/);
   ui.unmount();
 });
@@ -428,4 +430,13 @@ test('repeated confirmation taps cannot dispatch two requests while the first is
   await ui.settle();
   assert.equal(ui.saved().items.length, 0);
   ui.unmount();
+});
+
+test('supplier field autosaves with the cart and quick-create scanner metadata is in the same atomic submission', async()=>{
+ const ui=screen();await ui.settle();
+ let tools=ui.find(n=>n.type==='ProcurementTools')[0];tools.props.onSupplier('Chorsu');await ui.settle();
+ assert.equal(ui.saved().supplier,'Chorsu');tools=ui.find(n=>n.type==='ProcurementTools')[0];
+ await tools.props.onAdd({...line,productId:undefined,name:'Asal',barcodes:['ASAL-001']});await ui.settle();
+ assert.equal(ui.saved().items[0].barcodes[0],'ASAL-001');await ui.confirm();
+ assert.equal(ui.submissions.length,1);assert.equal(ui.submissions[0].supplier,'Chorsu');assert.equal(ui.submissions[0].items[0].barcodes[0],'ASAL-001');ui.unmount();
 });

@@ -41,3 +41,17 @@ test('invalid whole pieces, sub-gram quantities and incomplete server ACK never 
  for(const invalid of [{...item,unit:'dona',quantity:1.5},{...item,quantity:0.0001},{...item,buyPrice:Infinity}])assert.throws(()=>validateProcurementItems([invalid]));
  const f=fixture(),c=f.make();await c.saveDraft([item]);await assert.rejects(c.confirm(async()=>({})),/tasdiqlamadi/);assert.ok(f.saved().id);
 });
+
+test('supplier and scanner barcode persist offline and remain immutable on unknown receipt replay',async()=>{
+ const f=fixture(),c=f.make();await c.load();await c.saveSupplier(' Chorsu ');await c.saveDraft([{...item,barcodes:['ASAL-001']}]);
+ assert.equal(f.saved().supplier,'Chorsu');let first;
+ await assert.rejects(c.confirm(async(id,items,supplier)=>{first={id,items,supplier};throw Error('lost response')}),/lost/);
+ await assert.rejects(c.saveSupplier('Other'),/tasdig/);
+ const restarted=f.make();await restarted.load();await restarted.confirm(async(id,items,supplier)=>{assert.equal(JSON.stringify({id,items,supplier}),JSON.stringify(first));return {localId:'r'}});
+ assert.equal(f.saved().supplier,undefined);
+});
+test('supplier autosave never replaces cart items and stale tabs cannot rewrite metadata',async()=>{
+ const f=fixture(),a=f.make();await a.saveDraft([item]);const b=f.make();await b.load();await a.saveSupplier('A');
+ assert.equal(f.saved().items.length,1);await assert.rejects(b.saveSupplier('B'),/boshqa oynada/);
+ await a.saveSupplier('');assert.equal(f.saved().supplier,undefined);await assert.rejects(a.saveSupplier('X'.repeat(121)),/uzun/);
+});

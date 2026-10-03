@@ -1,3 +1,4 @@
+import type { ProcurementReceipt, ProcurementSummary, ProcurementQuery, ProcurementHistoryQuery, ProcurementAnalytics } from '../utils/procurementTypes'
 import { nativeBackendAdapter } from "./nativeAdapter";
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import rawAxios from 'axios'
@@ -131,7 +132,7 @@ function isFailoverTriggering(error: AxiosError): boolean {
 function isHeavyRequest(config: InternalAxiosRequestConfig): boolean {
   if (typeof FormData !== 'undefined' && config.data instanceof FormData) return true
   const url = config.url ?? ''
-  return url.includes('/snapshots') || url.includes('/inventory/range') || url.includes('/stats')
+  return url.includes('/snapshots') || url.includes('/inventory/range') || url.includes('/stats') || url.includes('/procurements')
 }
 
 function sessionIdentity(token: string | null): string {
@@ -611,11 +612,15 @@ export function getProductImageSrc(
 export const procurementApi = {
   products: async () => {
     const { data } = await api.get<Product[]>('/products')
-    return data.map(p => ({id:p.localId ?? p._id,name:p.name,unit:(p.unit ?? 'dona') as 'dona'|'kg',quantity:p.quantity ?? 0,buyPrice:p.buyPrice ?? 0}))
+    return data.map(p => ({id:p.localId ?? p._id,name:p.name,unit:(p.unit ?? 'dona') as 'dona'|'kg',quantity:p.quantity ?? 0,buyPrice:p.buyPrice ?? 0,barcodes:p.barcodes ?? []}))
   },
-  list: async () => (await api.get<{localId:string;date:string;totalCost:number}[]>('/procurements')).data,
-  submit: async (id: string, items: import('../utils/procurementIntent').ProcurementItem[]) => {
-    const { data } = await api.post<{procurement:{localId:string}}>('/procurements', {items}, {headers:{'Idempotency-Key':id}})
+  list: async (params?: ProcurementHistoryQuery) => (await api.get<ProcurementReceipt[]>('/procurements', {params})).data,
+  detail: async (id: string) => (await api.get<ProcurementReceipt>(`/procurements/${encodeURIComponent(id)}`)).data,
+  summary: async () => (await api.get<ProcurementSummary>('/procurements/summary')).data,
+  analytics: async (params: ProcurementQuery) => (await api.get<ProcurementAnalytics>('/procurements/analytics', {params})).data,
+  export: async (params: ProcurementQuery, format: 'csv'|'xlsx'|'pdf') => (await api.get<ArrayBuffer>('/procurements/export', {params:{...params,format},responseType:'arraybuffer'})).data,
+  submit: async (id: string, items: import('../utils/procurementIntent').ProcurementItem[], supplier?: string) => {
+    const { data } = await api.post<{procurement:{localId:string}}>('/procurements', {items,supplier}, {headers:{'Idempotency-Key':id}})
     return data.procurement
   },
 }

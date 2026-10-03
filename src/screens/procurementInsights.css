@@ -1,0 +1,362 @@
+.pi-section,
+.pi-tools {
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  padding: 22px;
+  margin: 16px 0;
+}
+.pi-section h2 {
+  font-size: 19px;
+  margin: 0 0 6px;
+}
+.pi-section h3 {
+  font-size: 15px;
+  margin: 24px 0 12px;
+}
+.pi-muted,
+.pi-kpi span {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.pi-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+.pi-kpi {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.pi-kpi strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.pi-tools,
+.pi-filters,
+.pi-heading,
+.pi-actions {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+.pi-heading {
+  justify-content: space-between;
+  align-items: center;
+}
+.pi-filters {
+  margin: 18px 0;
+}
+.pi-tools label,
+.pi-filters label,
+.pi-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  flex: 1;
+  min-width: 130px;
+}
+.pi-tools input,
+.pi-filters input,
+.pi-filters select,
+.pi-dialog input,
+.pi-dialog select {
+  box-sizing: border-box;
+  min-height: 44px;
+  max-width: 100%;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  background: var(--color-background);
+  color: var(--color-text);
+  border-radius: 9px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 14px;
+}
+.pi-button {
+  min-height: 44px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pi-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pi-button:focus-visible,
+.pi-batch-toggle:focus-visible,
+.pi-filters input:focus-visible,
+.pi-tools input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+.pi-primary {
+  color: #fff;
+  background: var(--color-primary);
+}
+.pi-price {
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  border: 1px solid currentColor;
+  border-radius: 9px;
+}
+.pi-up {
+  color: var(--color-danger, #b45309);
+}
+.pi-down {
+  color: var(--color-success, #15803d);
+}
+.pi-error {
+  color: var(--color-danger, #dc2626);
+  font-size: 13px;
+  flex-basis: 100%;
+}
+.pi-dialog {
+  width: 450px;
+  max-width: calc(100vw - 32px);
+  max-height: 90dvh;
+  overflow: auto;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 24px;
+}
+.pi-dialog::backdrop {
+  background: rgba(10, 15, 25, 0.65);
+  backdrop-filter: blur(4px);
+}
+.pi-dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.pi-dialog h2 {
+  font-size: 20px;
+  margin: 0;
+}
+.pi-dialog p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.pi-batch {
+  border-top: 1px solid var(--color-border);
+  padding: 12px 0;
+}
+.pi-batch-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border: 0;
+  background: none;
+  width: 100%;
+  text-align: left;
+  min-height: 52px;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.pi-batch-toggle small {
+  display: block;
+  color: var(--color-text-secondary);
+  margin-top: 6px;
+}
+.pi-detail {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  padding: 12px 0;
+}
+.pi-detail strong {
+  color: var(--color-text);
+}
+.pi-table-wrap {
+  overflow-x: auto;
+}
+.pi-section table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.pi-section th,
+.pi-section td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+.pi-section th {
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+.pi-actions {
+  align-items: center;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.pi-balance {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 20px 0;
+  padding: 18px;
+  background: var(--color-background);
+  border-radius: 12px;
+}
+.pi-balance div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+}
+.pi-balance span {
+  color: var(--color-text-secondary);
+}
+.pi-chart {
+  display: flex;
+  align-items: end;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+}
+.pi-chart-column {
+  min-width: 62px;
+  text-align: center;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.pi-bars {
+  height: 150px;
+  display: flex;
+  align-items: end;
+  gap: 3px;
+  justify-content: center;
+}
+.pi-bars span {
+  width: 16px;
+  min-height: 2px;
+  background: var(--color-primary);
+  border-radius: 4px 4px 0 0;
+}
+.pi-bars span + span {
+  background: #16a34a;
+}
+.pi-print {
+  display: none;
+}
+.pi-analytics {
+  margin: 24px 0;
+}
+.pc-page:has(.pi-dock) {
+  padding-bottom: 100px;
+}
+.pi-dock {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(780px, calc(100vw - 36px));
+  box-sizing: border-box;
+  bottom: 20px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.1);
+  font-size: 13px;
+}
+.pi-dock small {
+  display: block;
+  color: var(--color-text-secondary);
+  margin-top: 5px;
+}
+@media (max-width: 600px) {
+  .pi-section,
+  .pi-tools {
+    padding: 16px;
+  }
+  .pi-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pi-kpi {
+    padding: 14px;
+  }
+  .pi-kpi strong {
+    font-size: 16px;
+  }
+  .pi-tools label {
+    min-width: 100%;
+    width: 100%;
+  }
+  .pi-balance {
+    grid-template-columns: 1fr;
+  }
+  .pi-filters label {
+    min-width: calc(50% - 12px);
+  }
+  .pi-dock {
+    bottom: 76px;
+    padding: 12px;
+    gap: 8px;
+  }
+  .pi-dock strong {
+    font-size: 12px;
+  }
+}
+@media print {
+  body:has(.pi-print) * {
+    visibility: hidden !important;
+  }
+  .pi-print,
+  .pi-print * {
+    visibility: visible !important;
+  }
+  .pi-print {
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white;
+    color: black;
+    padding: 12px;
+    box-sizing: border-box;
+  }
+  .pi-print table {
+    color: black;
+  }
+  .pi-print th,
+  .pi-print td {
+    border-bottom: 1px solid #ddd;
+  }
+  .pi-print h2 {
+    color: black;
+  }
+}

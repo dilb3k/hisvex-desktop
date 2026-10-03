@@ -5,7 +5,6 @@ import {
   ArrowDownToLine,
   Check,
   CheckCircle2,
-  ChevronDown,
   Clock3,
   Loader2,
   Package,
@@ -24,6 +23,16 @@ import {
 import { procurementApi } from '../api/client'
 import { useAuthStore } from '../store/authStore'
 import './procurement.css'
+import {
+  ProcurementKpis,
+  ProcurementTools,
+  PriceAlert,
+  ProcurementHistory,
+} from './ProcurementInsights'
+import {
+  procurementQuantity,
+  type ProcurementReceipt,
+} from '../utils/procurementTypes'
 
 type Product = {
   id: string
@@ -31,24 +40,13 @@ type Product = {
   unit: 'kg' | 'dona'
   quantity: number
   buyPrice: number
+  barcodes?: string[]
 }
-type Receipt = { localId: string; date: string; totalCost: number }
+type Receipt = ProcurementReceipt
 const number = (value: number) =>
   value.toLocaleString('uz-UZ', { maximumFractionDigits: 3 })
 const money = (value: number) =>
   value.toLocaleString('uz-UZ', { maximumFractionDigits: 2 })
-const receiptDate = (value: string) => {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleString('uz-UZ', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-}
 
 export function ProcurementScreen({
   catalogOnly = false,
@@ -61,6 +59,8 @@ export function ProcurementScreen({
   const [products, setProducts] = useState<Product[]>([])
   const [history, setHistory] = useState<Receipt[]>([])
   const [items, setItems] = useState<ProcurementItem[]>([])
+  const [supplier, setSupplier] = useState('')
+  const priceRef = useRef<HTMLInputElement>(null)
   const [pending, setPending] = useState(false)
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState<'save' | 'remove' | 'confirm' | ''>('')
@@ -75,7 +75,6 @@ export function ProcurementScreen({
   const [notice, setNotice] = useState('')
   const [mode, setMode] = useState<'catalog' | 'new'>('catalog')
   const [search, setSearch] = useState('')
-  const [showAllHistory, setShowAllHistory] = useState(false)
   const [editing, setEditing] = useState<number | null>(null)
   const [productId, setProductId] = useState('')
   const [name, setName] = useState('')
@@ -135,6 +134,7 @@ export function ProcurementScreen({
       const saved = await intent.load()
       if (!isCurrent()) return
       setItems(saved.items)
+      setSupplier(saved.supplier ?? '')
       setPending(!!saved.id)
       setReady(true)
       setError('')
@@ -146,6 +146,7 @@ export function ProcurementScreen({
     const requests = fetchVersion
     setReady(false)
     setItems([])
+    setSupplier('')
     setPending(false)
     setProducts([])
     setHistory([])
@@ -177,13 +178,6 @@ export function ProcurementScreen({
       ),
     [products, search],
   )
-  const sortedHistory = useMemo(
-    () =>
-      [...history].sort(
-        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-      ),
-    [history],
-  )
   const total = items.reduce(
     (sum, item) => sum + item.quantity * item.buyPrice,
     0,
@@ -199,6 +193,7 @@ export function ProcurementScreen({
     setQuantity('1')
   }
   const choose = (product: Product) => {
+    setMode('catalog')
     setProductId(product.id)
     setName(product.name)
     setUnit(product.unit)
@@ -242,12 +237,15 @@ export function ProcurementScreen({
         unit,
         quantity: Number(quantity),
         buyPrice: Number(price),
+        ...(editing !== null && items[editing]?.barcodes
+          ? { barcodes: items[editing].barcodes }
+          : {}),
       }
       const nextItems =
         editing === null
           ? [...items, line]
           : items.map((item, index) => (index === editing ? line : item))
-      const next = await intent.saveDraft(nextItems)
+      const next = await intent.saveDraft(nextItems, supplier)
       if (!isCurrent()) return
       setItems(next.items)
       resetForm()
@@ -272,7 +270,10 @@ export function ProcurementScreen({
     setError('')
     setNotice('')
     try {
-      const next = await intent.saveDraft(items.filter((_, i) => i !== index))
+      const next = await intent.saveDraft(
+        items.filter((_, i) => i !== index),
+        supplier,
+      )
       if (!isCurrent()) return
       setItems(next.items)
       if (editing === index) resetForm()
@@ -293,9 +294,11 @@ export function ProcurementScreen({
     setError('')
     setNotice('')
     try {
+      if (!pending) await intent.saveDraft(items, supplier)
       await intent.confirm(procurementApi.submit)
       if (!isCurrent()) return
       setItems([])
+      setSupplier('')
       setPending(false)
       resetForm()
       setNotice('Kirim tasdiqlandi. Mahsulot qoldiqlari yangilandi.')
@@ -307,11 +310,35 @@ export function ProcurementScreen({
         const saved = await intent.load()
         if (isCurrent()) {
           setItems(saved.items)
+          setSupplier(saved.supplier ?? '')
           setPending(!!saved.id)
         }
       } catch {
         /* Keep the last readable cart on a storage error. */
       }
+    } finally {
+      if (isCurrent()) {
+        busyRef.current = false
+        setBusy('')
+      }
+    }
+  }
+  const changeSupplier = (value: string) => {
+    if (locked) return
+    setSupplier(value)
+    void intent.saveSupplier(value).catch((e) => {
+      if (isCurrent()) setError((e as Error).message)
+    })
+  }
+  const quickAdd = async (line: ProcurementItem) => {
+    if (locked || busyRef.current) throw Error('Savat hozir band')
+    busyRef.current = true
+    setBusy('save')
+    try {
+      const next = await intent.saveDraft([...items, line], supplier)
+      if (!isCurrent()) throw Error('Sessiya o‘zgardi')
+      setItems(next.items)
+      setNotice('Yangi mahsulot savatga qo‘shildi')
     } finally {
       if (isCurrent()) {
         busyRef.current = false
@@ -407,6 +434,20 @@ export function ProcurementScreen({
           <span>Yangilash</span>
         </button>
       </header>
+      {!catalogOnly && (
+        <>
+          <ProcurementKpis revision={history} />
+          <ProcurementTools
+            products={products}
+            locked={locked}
+            supplier={supplier}
+            onSupplier={changeSupplier}
+            onChoose={choose}
+            onAdd={quickAdd}
+            focusRevision={items}
+          />
+        </>
+      )}
       {error && (
         <div className="pc-banner pc-banner-error" role="alert">
           <AlertCircle size={18} />
@@ -576,6 +617,12 @@ export function ProcurementScreen({
                   <input
                     required
                     maxLength={200}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        quantityRef.current?.focus()
+                      }
+                    }}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     disabled={locked}
@@ -590,6 +637,12 @@ export function ProcurementScreen({
                   <div className="pc-input-unit">
                     <input
                       ref={quantityRef}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          priceRef.current?.focus()
+                        }
+                      }}
                       required
                       type="number"
                       inputMode={unit === 'kg' ? 'decimal' : 'numeric'}
@@ -633,6 +686,7 @@ export function ProcurementScreen({
                     inputMode="decimal"
                     min="0"
                     step="0.01"
+                    ref={priceRef}
                     value={price}
                     onChange={(e) => setPrice(e.target.value)}
                     disabled={locked}
@@ -641,6 +695,14 @@ export function ProcurementScreen({
                   <span>so‘m</span>
                 </div>
               </label>
+              {!!productId && (
+                <PriceAlert
+                  previous={
+                    products.find((p) => p.id === productId)?.buyPrice ?? 0
+                  }
+                  next={price}
+                />
+              )}
               <div className="pc-line-total">
                 <span>Ushbu mahsulot summasi</span>
                 <strong>
@@ -821,76 +883,35 @@ export function ProcurementScreen({
               </div>
             </aside>
           </div>
-          <section className="pc-panel pc-history" aria-label="Kirimlar tarixi">
-            <div className="pc-panel-heading">
+          <ProcurementHistory
+            initial={history}
+            products={products}
+            error={historyError}
+            loading={loading}
+          />
+          {!!items.length && (
+            <div className="pi-dock">
               <div>
-                <h2>
-                  <Clock3 size={18} />
-                  Kirimlar tarixi{' '}
-                  <span className="pc-count">{history.length}</span>
-                </h2>
-                <p>Server tasdiqlagan kirimlar</p>
+                <strong>{money(total)} so‘m</strong>
+                <small>
+                  {procurementQuantity(items).dona} dona ·{' '}
+                  {procurementQuantity(items).kg} kg · {items.length} tur
+                </small>
               </div>
-              {history.length > 5 && (
-                <button
-                  type="button"
-                  className="pc-text-btn"
-                  onClick={() => setShowAllHistory(!showAllHistory)}
-                >
-                  {showAllHistory ? 'Qisqartirish' : 'Barchasini ko‘rsatish'}
-                  <ChevronDown
-                    size={16}
-                    className={showAllHistory ? 'pc-rotated' : ''}
-                  />
-                </button>
-              )}
+              <button
+                type="button"
+                className="pi-button pi-primary"
+                disabled={!ready || !!busy || editing !== null}
+                onClick={() => void confirm()}
+              >
+                {busy === 'confirm'
+                  ? 'Tasdiqlanmoqda…'
+                  : pending
+                    ? 'Tasdiqni tekshirish'
+                    : 'Partiyani tasdiqlash'}
+              </button>
             </div>
-            {historyError ? (
-              <div className="pc-inline-error" role="alert">
-                <AlertCircle size={18} />
-                <span>{historyError}</span>
-                <button type="button" onClick={retry} disabled={loading}>
-                  Qayta urinish
-                </button>
-              </div>
-            ) : loading && !history.length ? (
-              <div className="pc-empty" role="status">
-                <Loader2 className="pc-spin" size={22} />
-                <p>Tarix yuklanmoqda…</p>
-              </div>
-            ) : !history.length ? (
-              <div className="pc-history-empty">
-                <Clock3 size={22} />
-                <p>
-                  Hali tasdiqlangan kirim yo‘q. Birinchi kirimingiz shu yerda
-                  ko‘rinadi.
-                </p>
-              </div>
-            ) : (
-              <div className="pc-receipts">
-                {(showAllHistory
-                  ? sortedHistory
-                  : sortedHistory.slice(0, 5)
-                ).map((receipt) => (
-                  <div key={receipt.localId} className="pc-receipt">
-                    <span className="pc-receipt-icon">
-                      <ArrowDownToLine size={17} />
-                    </span>
-                    <div>
-                      <strong>{receiptDate(receipt.date)}</strong>
-                      <span>
-                        <CheckCircle2 size={12} />
-                        Tasdiqlangan
-                      </span>
-                    </div>
-                    <strong className="pc-receipt-total">
-                      {money(receipt.totalCost)} <small>so‘m</small>
-                    </strong>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+          )}
         </>
       )}
     </section>

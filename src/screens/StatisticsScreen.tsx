@@ -1,3 +1,4 @@
+import { ProcurementAnalytics } from './ProcurementInsights'
 import { escapeCsvCell } from "../utils/csv";
 import { useEffect, useState, useMemo, useCallback, forwardRef } from 'react'
 import DatePicker from 'react-datepicker'
@@ -564,7 +565,8 @@ export function StatisticsScreen() {
   // Undefined (not yet hydrated) never locks - only an explicit 'tekin'
   // does, so a cache miss fails open to "show the page" rather than
   // flashing the lock screen for every paying admin on every load.
-  const isLocked = tier === 'tekin'
+  const procurementScope = useAuthStore(s => s.user?.scope) === 'procurement'
+  const isLocked = tier === 'tekin' || procurementScope
 
   const fetchData = useCallback(async () => {
     // Locked account: never even ask. "Statistikalar kelmasligi kerak" -
@@ -891,6 +893,7 @@ export function StatisticsScreen() {
       </div>
 
       {/* Section A — "Bu davr" (period tabs + date nav — interaction model unchanged) */}
+      <ProcurementAnalytics from={range.from} to={range.to} refreshKey={refreshKey} />
       <SectionEyebrow first>{t('statsSectionThisPeriod') || 'Bu davr'}</SectionEyebrow>
 
       <div style={s.tabsRow}>
