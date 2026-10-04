@@ -2,7 +2,8 @@ import { Fragment, useEffect, useSyncExternalStore } from 'react'
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
 import { getLanguage, subscribeLanguage } from './i18n'
-import { setUnauthorizedHandler, setTokensRefreshedHandler } from './api/client'
+import { authApi, setUnauthorizedHandler, setTokensRefreshedHandler } from './api/client'
+import { startSessionHeartbeat } from './utils/sessionHeartbeat'
 import { initBusinessDay } from './utils/businessDay'
 import { LoginScreen } from './screens/LoginScreen'
 import { ProcurementScreen } from './screens/ProcurementScreen'
@@ -45,6 +46,21 @@ export function App() {
   const logout = useAuthStore((s) => s.logout)
   const hydrate = useAuthStore((s) => s.hydrate)
   const persistenceError = useAuthStore((s) => s.persistenceError)
+  const userId = useAuthStore(s => s.user?._id)
+  const scoped = useAuthStore(s => s.user?.scope === 'procurement')
+
+  useEffect(() => {
+    if (!userId || scoped) return
+    const heartbeat = startSessionHeartbeat(authApi.heartbeat, () => navigator.onLine && document.visibilityState === 'visible')
+    const ping = () => { void heartbeat.ping() }
+    window.addEventListener('online', ping)
+    document.addEventListener('visibilitychange', ping)
+    return () => {
+      heartbeat.stop()
+      window.removeEventListener('online', ping)
+      document.removeEventListener('visibilitychange', ping)
+    }
+  }, [userId, scoped])
 
   useEffect(() => { hydrate() }, [hydrate])
 

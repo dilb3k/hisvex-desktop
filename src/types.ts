@@ -6,6 +6,7 @@ export interface User {
   name?: string
   username: string
   phone_number?: string
+  telegramId?: string | null
   role: 'admin' | 'superAdmin'
   tier?: 'tekin' | 'bor' | 'pro'
   isPayed?: boolean

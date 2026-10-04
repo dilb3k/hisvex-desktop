@@ -3,6 +3,7 @@ import { Sidebar } from './Sidebar'
 import { OfflineBanner } from './OfflineBanner'
 import { useAppStore } from '../store/appStore'
 import { X, AlertTriangle, CheckCircle, Info } from 'lucide-react'
+import { TelegramSetup } from './TelegramSetup'
 
 export function AppLayout() {
   const { error, clearError, toast, hideToast } = useAppStore()
@@ -18,6 +19,7 @@ export function AppLayout() {
         background: 'var(--color-bg)',
       }}>
         <OfflineBanner />
+        <TelegramSetup />
         {error && (
           <div
             className="animate-slideUp"

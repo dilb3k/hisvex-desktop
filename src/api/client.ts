@@ -394,6 +394,7 @@ api.interceptors.response.use(
 )
 
 export const authApi = {
+  heartbeat: () => api.post('/auth/session/heartbeat', {}),
   loginProcurement: (username: string, password: string) => api.post<AuthSuccess>('/auth/login/procurement', { username, password }),
   login: (username: string, password: string) =>
     api.post<AuthResponse>('/auth/login', { username, password, deviceId: getDeviceId() }),
@@ -415,6 +416,7 @@ export const authApi = {
       username,
       password,
       phone_number,
+      deviceId: getDeviceId(),
       ...(businessDayStartHour !== undefined ? { businessDayStartHour } : {}),
     }),
 

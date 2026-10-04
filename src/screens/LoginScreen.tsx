@@ -98,6 +98,10 @@ export function LoginScreen() {
         setError(t('passwordTooShort'))
         return
       }
+      if (phoneNumber.replace(/\D/g, '').length < 7) {
+        setError(t('phoneRequired'))
+        return
+      }
       const hour = Number(businessDayStartHour.trim())
       if (!businessDayStartHour.trim() || !Number.isInteger(hour) || hour < 0 || hour > 23) {
         setError(t('businessDayStartRequired'))
@@ -600,6 +604,7 @@ export function LoginScreen() {
                       </div>
                       <div>
                         <label style={labelStyle}>{t('phoneNumber')}</label>
+                        <p style={{ color: C.textSecondary, fontSize: 12, lineHeight: 1.5 }}>{t('telegramSetupHelp')}</p>
                         <input
                           type="tel"
                           value={phoneNumber}
