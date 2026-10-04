@@ -56,6 +56,7 @@ test('the desktop verification button opens Telegram through the native external
   const mocks = {
     react: { useState: () => ['', () => {}] }, 'react/jsx-runtime': { jsx, jsxs: jsx },
     '../i18n': { t: key => key },
+    './TelegramIcon': { TelegramIcon: () => null },
     '../utils/useRegistrationPhone': { useRegistrationPhone: () => ({ challenge, wait: () => waited = true, error: '', phone: '' }) },
   };
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText, {

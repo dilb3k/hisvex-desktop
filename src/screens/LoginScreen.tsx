@@ -6,6 +6,7 @@ import { authApi } from '../api/client'
 import { useAuthStore } from '../store/authStore'
 import { t } from '../i18n'
 import { PasswordInput } from '../components/PasswordInput'
+import { TelegramIcon } from '../components/TelegramIcon'
 import { formatPhone, formatMoney } from '../utils/formatters'
 import { getStoredStaleToken } from '../utils/authStorage'
 import { formatQuantity } from '../utils/inventory'
@@ -591,6 +592,12 @@ export function LoginScreen() {
                       autoCapitalize="none"
                       autoCorrect="off"
                     />
+                    {isLoginMode && <a href="https://t.me/hisvex_bot?start=reset_password" target="_blank" rel="noopener noreferrer" onClick={event => {
+                      if (window.electronAPI?.openExternal) {
+                        event.preventDefault()
+                        void window.electronAPI.openExternal('https://t.me/hisvex_bot?start=reset_password').then(opened => { if (!opened) setError(t('registrationPhoneOpenError')) }).catch(() => setError(t('registrationPhoneOpenError')))
+                      }
+                    }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, color: C.primary, fontSize: 12.5, lineHeight: 1.5 }}><TelegramIcon size={16} />{t('forgotPassword')}</a>}
                   </div>
 
                   {!isLoginMode && (
