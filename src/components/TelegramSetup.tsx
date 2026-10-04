@@ -26,7 +26,12 @@ export function TelegramSetup() {
       <strong>{t('telegramSetupTitle')}</strong>
       <p style={{ margin: '6px 0', fontSize: 13, lineHeight: 1.6 }}>{t('telegramSetupSteps', { phone: user.phone_number ?? '' })}</p>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <a href="https://t.me/hisvex_bot?start=link" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{t('telegramSetupOpen')}</a>
+        <a href="https://t.me/hisvex_bot?start=link" target="_blank" rel="noopener noreferrer" onClick={event => {
+          if (window.electronAPI?.openExternal) {
+            event.preventDefault()
+            void window.electronAPI.openExternal('https://t.me/hisvex_bot?start=link').catch(() => setMessage(t('registrationPhoneOpenError')))
+          }
+        }} style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{t('telegramSetupOpen')}</a>
         <button type="button" onClick={() => { void check() }} disabled={checking} style={{ padding: '7px 12px', borderRadius: 8, cursor: 'pointer', color: 'var(--color-text)', background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>{checking ? t('telegramSetupChecking') : t('telegramSetupCheck')}</button>
       </div>
       {message && <p role="status" style={{ margin: '8px 0 0', fontSize: 13 }}>{message}</p>}

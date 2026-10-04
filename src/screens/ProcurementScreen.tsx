@@ -25,7 +25,6 @@ import { useAuthStore } from '../store/authStore'
 import './procurement.css'
 import {
   ProcurementKpis,
-  ProcurementTools,
   PriceAlert,
   ProcurementHistory,
 } from './ProcurementInsights'
@@ -323,29 +322,6 @@ export function ProcurementScreen({
       }
     }
   }
-  const changeSupplier = (value: string) => {
-    if (locked) return
-    setSupplier(value)
-    void intent.saveSupplier(value).catch((e) => {
-      if (isCurrent()) setError((e as Error).message)
-    })
-  }
-  const quickAdd = async (line: ProcurementItem) => {
-    if (locked || busyRef.current) throw Error('Savat hozir band')
-    busyRef.current = true
-    setBusy('save')
-    try {
-      const next = await intent.saveDraft([...items, line], supplier)
-      if (!isCurrent()) throw Error('Sessiya o‘zgardi')
-      setItems(next.items)
-      setNotice('Yangi mahsulot savatga qo‘shildi')
-    } finally {
-      if (isCurrent()) {
-        busyRef.current = false
-        setBusy('')
-      }
-    }
-  }
   const retry = () => {
     void refresh()
     if (!ready) void loadDraft()
@@ -434,20 +410,7 @@ export function ProcurementScreen({
           <span>Yangilash</span>
         </button>
       </header>
-      {!catalogOnly && (
-        <>
-          <ProcurementKpis revision={history} />
-          <ProcurementTools
-            products={products}
-            locked={locked}
-            supplier={supplier}
-            onSupplier={changeSupplier}
-            onChoose={choose}
-            onAdd={quickAdd}
-            focusRevision={items}
-          />
-        </>
-      )}
+      {!catalogOnly && <ProcurementKpis revision={history} />}
       {error && (
         <div className="pc-banner pc-banner-error" role="alert">
           <AlertCircle size={18} />

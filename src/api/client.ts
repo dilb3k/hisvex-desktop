@@ -394,6 +394,8 @@ api.interceptors.response.use(
 )
 
 export const authApi = {
+  beginRegistrationPhone: () => api.post<{ token: string; botUrl: string; expiresAt: string }>('/auth/register/phone', {}),
+  registrationPhoneStatus: (token: string) => api.post<{ verified: boolean; phone: string | null }>('/auth/register/phone/status', { token }),
   heartbeat: () => api.post('/auth/session/heartbeat', {}),
   loginProcurement: (username: string, password: string) => api.post<AuthSuccess>('/auth/login/procurement', { username, password }),
   login: (username: string, password: string) =>
@@ -411,11 +413,12 @@ export const authApi = {
       deviceId: getDeviceId(),
     }),
 
-  register: (username: string, password: string, phone_number?: string, businessDayStartHour?: number) =>
+  register: (username: string, password: string, phone_number?: string, businessDayStartHour?: number, phoneVerificationToken?: string) =>
     api.post<AuthSuccess>('/auth/register', {
       username,
       password,
       phone_number,
+    phoneVerificationToken,
       deviceId: getDeviceId(),
       ...(businessDayStartHour !== undefined ? { businessDayStartHour } : {}),
     }),

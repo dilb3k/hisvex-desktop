@@ -432,11 +432,12 @@ test('repeated confirmation taps cannot dispatch two requests while the first is
   ui.unmount();
 });
 
-test('supplier field autosaves with the cart and quick-create scanner metadata is in the same atomic submission', async()=>{
- const ui=screen();await ui.settle();
- let tools=ui.find(n=>n.type==='ProcurementTools')[0];tools.props.onSupplier('Chorsu');await ui.settle();
- assert.equal(ui.saved().supplier,'Chorsu');tools=ui.find(n=>n.type==='ProcurementTools')[0];
- await tools.props.onAdd({...line,productId:undefined,name:'Asal',barcodes:['ASAL-001']});await ui.settle();
- assert.equal(ui.saved().items[0].barcodes[0],'ASAL-001');await ui.confirm();
- assert.equal(ui.submissions.length,1);assert.equal(ui.submissions[0].supplier,'Chorsu');assert.equal(ui.submissions[0].items[0].barcodes[0],'ASAL-001');ui.unmount();
+test('Kirimlar omits the supplier and scanner section while keeping the existing cart flow', async () => {
+  const ui = screen({ saved: { items: [line] } });
+  await ui.settle();
+  assert.equal(ui.find(n => n.type === 'ProcurementTools').length, 0);
+  await ui.confirm();
+  assert.equal(ui.submissions.length, 1);
+  assert.equal(ui.submissions[0].items[0].name, line.name);
+  ui.unmount();
 });

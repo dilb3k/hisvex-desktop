@@ -2,6 +2,16 @@ export type Language = 'uz' | 'ru'
 
 export const translations = {
   uz: {
+    registrationPhoneReset: "Qaytadan tasdiqlash",
+    registrationPhoneOpenError: "Telegram botini ochib bo‘lmadi. Qayta urinib ko‘ring.",
+    registrationPhoneOpen: "Telegram orqali tasdiqlash",
+    registrationPhoneReopen: "Botni qayta ochish",
+    registrationPhoneVerified: "Tasdiqlandi",
+    registrationPhoneWaiting: "Botda Start va “Telefon raqamni yuborish”ni bosing. Formaga qaytganda raqam avtomatik tushadi.",
+    registrationPhoneHelp: "Botni oching → Start → telefon raqamingizni yuboring. Raqam avtomatik kiritiladi.",
+    registrationPhoneRetry: "Qayta urinish",
+    registrationPhoneRequired: "Avval telefon raqamingizni Telegram bot orqali tasdiqlang.",
+
     // Auth
     signIn: 'Kirish',
     signInTitle: 'Hisobga kirish',
@@ -459,6 +469,16 @@ export const translations = {
   },
 
   ru: {
+    registrationPhoneReset: "Подтвердить заново",
+    registrationPhoneOpenError: "Не удалось открыть Telegram-бота. Попробуйте ещё раз.",
+    registrationPhoneOpen: "Подтвердить через Telegram",
+    registrationPhoneReopen: "Открыть бота снова",
+    registrationPhoneVerified: "Подтверждён",
+    registrationPhoneWaiting: "Нажмите Start и «Отправить номер телефона» в боте. Номер появится в форме автоматически.",
+    registrationPhoneHelp: "Откройте бота → Start → отправьте свой контакт. Номер заполнится автоматически.",
+    registrationPhoneRetry: "Повторить",
+    registrationPhoneRequired: "Сначала подтвердите номер телефона через Telegram-бота.",
+
     // Auth
     signIn: 'Вход',
     signInTitle: 'Войти в систему',
