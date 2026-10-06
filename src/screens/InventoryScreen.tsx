@@ -1,3 +1,5 @@
+import { QuantityStack } from '../components/QuantityStack'
+import { sumQuantities, formatInputMoney, parseInputMoney } from '../utils/quantities'
 import { syncNow } from '../store/syncEngine'
 import { useEffect, useState, useMemo, useCallback, forwardRef } from 'react'
 import { inventoryApi, getProductImageSrc, clearApiCache, getDeviceId } from '../api/client'
@@ -14,7 +16,7 @@ import {
 import { t } from '../i18n'
 import { PageHeader } from '../components/PageHeader'
 import type { Product, InventoryItem, ProductUnit } from '../types'
-import { formatMoney, formatInputAmount, parseFormattedAmount, overlay, inputBase, btnPrimary, btnSecondary } from '../styles/shared'
+import { formatMoney, overlay, inputBase, btnPrimary, btnSecondary } from '../styles/shared'
 import { getBusinessDate } from '../utils/businessDay'
 import {
   compareProducts,
@@ -292,6 +294,11 @@ export function InventoryScreen() {
       profit += e.realizedProfit
     }
     return {
+      quantities: {
+        start: sumQuantities(combinedData.map(e => ({ quantity: e.opening, unit: e.unit }))),
+        current: sumQuantities(combinedData.map(e => ({ quantity: e.remaining, unit: e.unit }))),
+        sold: sumQuantities(combinedData.map(e => ({ quantity: e.sold, unit: e.unit }))),
+      },
       start: roundQty(start),
       remaining: roundQty(remaining),
       sold: roundQty(sold),
@@ -417,7 +424,7 @@ export function InventoryScreen() {
     // An overwritten revenue is authoritative. Profit is never editable — it
     // is always revenue minus the cost of the units sold, so every so'm taken
     // off the revenue comes straight off the profit.
-    const newRevenue = revenueInput === null ? listRevenue : roundMoney(parseFormattedAmount(revenueInput))
+    const newRevenue = revenueInput === null ? listRevenue : roundMoney(parseInputMoney(revenueInput))
     const newProfit = roundMoney(newRevenue - newSold * selectedEntry.buyPrice)
     return {
       prevSold: selectedEntry.sold,
@@ -456,12 +463,9 @@ export function InventoryScreen() {
   const renderKpiRow = () => {
     const negativeProfit = totals.profit < 0
     const kpiItems = [
-      { icon: <Boxes size={17} />, label: t('start'), value: String(totals.start), color: 'var(--color-text)', bg: 'rgba(127,127,127,0.12)' },
-      // No unit suffix on these: they sum across products measured in
-      // different units, so "24.5 dona" would be wrong. formatQuantityValue
-      // with 'kg' just means "keep the decimals, drop trailing zeros".
-      { icon: <Package size={17} />, label: t('remaining'), value: formatQuantityValue(totals.remaining, 'kg'), color: 'var(--color-text)', bg: 'rgba(127,127,127,0.12)' },
-      { icon: <ShoppingCart size={17} />, label: t('sold'), value: formatQuantityValue(totals.sold, 'kg'), color: 'var(--color-metric-qty)', bg: 'var(--color-metric-qty-soft)' },
+      { icon: <Boxes size={17} />, label: t('start'), value: <QuantityStack quantities={totals.quantities.start} />, color: 'var(--color-text)', bg: 'rgba(127,127,127,0.12)' },
+      { icon: <Package size={17} />, label: t('remaining'), value: <QuantityStack quantities={totals.quantities.current} />, color: 'var(--color-text)', bg: 'rgba(127,127,127,0.12)' },
+      { icon: <ShoppingCart size={17} />, label: t('sold'), value: <QuantityStack quantities={totals.quantities.sold} />, color: 'var(--color-metric-qty)', bg: 'var(--color-metric-qty-soft)' },
       { icon: <Wallet size={17} />, label: t('revenue'), value: formatMoney(totals.revenue), color: 'var(--color-metric-revenue)', bg: 'var(--color-metric-revenue-soft)' },
       {
         icon: negativeProfit ? <TrendingDown size={17} /> : <TrendingUp size={17} />,
@@ -635,11 +639,11 @@ export function InventoryScreen() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <input
                         type="text"
-                        inputMode="numeric"
+                        inputMode="decimal"
                         aria-label={t('expectedRevenue')}
-                        value={revenueInput ?? formatInputAmount(String(p.listRevenue))}
-                        onChange={(e) => setRevenueInput(formatInputAmount(e.target.value))}
-                        onFocus={() => { if (revenueInput === null) setRevenueInput(formatInputAmount(String(p.listRevenue))) }}
+                        value={revenueInput ?? formatInputMoney(String(p.listRevenue))}
+                        onChange={(e) => setRevenueInput(formatInputMoney(e.target.value))}
+                        onFocus={() => { if (revenueInput === null) setRevenueInput(formatInputMoney(String(p.listRevenue))) }}
                         style={{
                           ...s.modalInput,
                           width: 130,

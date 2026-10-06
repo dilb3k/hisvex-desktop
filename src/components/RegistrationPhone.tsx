@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
-import { t } from '../i18n'
+import { t, getLanguage } from '../i18n'
+import { translateApiMessage } from '../utils/apiErrorMessages'
 import { TelegramIcon } from './TelegramIcon'
 import { useRegistrationPhone, type VerifiedRegistrationPhone } from '../utils/useRegistrationPhone'
 
@@ -23,6 +24,6 @@ export function RegistrationPhone({ onVerified }: { onVerified: (value: Verified
       : <button type="button" disabled={flow.loading} onClick={() => void flow.prepare()} style={button}><TelegramIcon />{t(flow.loading ? 'loading' : 'registrationPhoneRetry')}</button>}
     {!flow.phone && <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5, margin: '8px 0 0' }}>{t(flow.waiting ? 'registrationPhoneWaiting' : 'registrationPhoneHelp')}</p>}
     {flow.challenge && (flow.waiting || flow.phone) && <button type="button" onClick={() => void flow.prepare()} style={{ background: 'none', border: 0, padding: '8px 0 0', fontSize: 12, color: 'var(--color-text-secondary)', cursor: 'pointer' }}>{t('registrationPhoneReset')}</button>}
-    {(flow.error || openError) && <p role="alert" style={{ color: 'var(--color-danger)', fontSize: 12 }}>{flow.error || openError}</p>}
+    {(flow.error || openError) && <p role="alert" style={{ color: 'var(--color-danger)', fontSize: 12 }}>{translateApiMessage(flow.error || openError, getLanguage())}</p>}
   </div>
 }

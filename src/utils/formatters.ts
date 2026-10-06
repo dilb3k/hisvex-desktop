@@ -1,3 +1,4 @@
+import { formatDecimal } from './quantities'
 import dayjs from 'dayjs'
 
 export const formatCurrency = (amount: number): string =>
@@ -20,7 +21,7 @@ export const formatDateTime = (date: string): string =>
 export const formatAmount = (value: number | string): string => {
   const num = typeof value === 'string' ? parseFloat(value) : value
   if (typeof num !== 'number' || Number.isNaN(num) || !Number.isFinite(num)) return '0'
-  return num.toLocaleString('uz-UZ')
+  return formatDecimal(num, 2, true)
 }
 
 export const formatInputAmount = (value: string): string => {

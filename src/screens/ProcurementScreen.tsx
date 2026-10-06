@@ -1,3 +1,5 @@
+import { QuantityStack } from '../components/QuantityStack'
+import { formatDecimal, formatTruncatedDecimal } from '../utils/quantities'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -43,9 +45,9 @@ type Product = {
 }
 type Receipt = ProcurementReceipt
 const number = (value: number) =>
-  value.toLocaleString('uz-UZ', { maximumFractionDigits: 3 })
+  formatTruncatedDecimal(value)
 const money = (value: number) =>
-  value.toLocaleString('uz-UZ', { maximumFractionDigits: 2 })
+  formatDecimal(value, 2, true)
 
 export function ProcurementScreen({
   catalogOnly = false,
@@ -196,7 +198,7 @@ export function ProcurementScreen({
     setProductId(product.id)
     setName(product.name)
     setUnit(product.unit)
-    setPrice(String(product.buyPrice))
+    setPrice(formatDecimal(product.buyPrice, 2))
     quantityRef.current?.focus()
   }
   const switchMode = (next: 'catalog' | 'new') => {
@@ -212,8 +214,8 @@ export function ProcurementScreen({
     setProductId(item.productId ?? '')
     setName(item.name)
     setUnit(item.unit)
-    setQuantity(String(item.quantity))
-    setPrice(String(item.buyPrice))
+    setQuantity(formatDecimal(item.quantity, item.unit === 'kg' ? 3 : 0))
+    setPrice(formatDecimal(item.buyPrice, 2))
     setError('')
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     quantityRef.current?.focus({ preventScroll: true })
@@ -386,18 +388,14 @@ export function ProcurementScreen({
 
   return (
     <section className="pc-page">
-      <header className="pc-page-header">
+      {catalogOnly && <header className="pc-page-header">
         <div className="pc-title-group">
           <span className="pc-page-icon">
             <ArrowDownToLine size={23} />
           </span>
           <div>
-            <h1>{catalogOnly ? 'Mahsulotlar' : 'Kirimlar'}</h1>
-            <p>
-              {catalogOnly
-                ? 'Mahsulot qoldiqlari va xarid narxlari'
-                : 'Mahsulotlarni savatga yig‘ing va bir marta tasdiqlang'}
-            </p>
+            <h1>Mahsulotlar</h1>
+            <p>Mahsulot qoldiqlari va xarid narxlari</p>
           </div>
         </div>
         <button
@@ -409,7 +407,7 @@ export function ProcurementScreen({
           <RefreshCw size={16} className={loading ? 'pc-spin' : ''} />
           <span>Yangilash</span>
         </button>
-      </header>
+      </header>}
       {!catalogOnly && <ProcurementKpis revision={history} />}
       {error && (
         <div className="pc-banner pc-banner-error" role="alert">
@@ -857,8 +855,7 @@ export function ProcurementScreen({
               <div>
                 <strong>{money(total)} so‘m</strong>
                 <small>
-                  {procurementQuantity(items).dona} dona ·{' '}
-                  {procurementQuantity(items).kg} kg · {items.length} tur
+                  <QuantityStack quantities={procurementQuantity(items)} /> · {items.length} tur
                 </small>
               </div>
               <button

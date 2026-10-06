@@ -1,3 +1,4 @@
+import { formatDecimal, formatTruncatedDecimal } from './quantities'
 import type { InventoryItem, Product, InventoryMetrics, ProductUnit } from '../types'
 
 // Money formatting lives in one place — utils/formatters.ts — and is
@@ -78,17 +79,17 @@ export const parseQuantityInput = (value: string, unit?: string | null): number 
   return Number.isFinite(parsed) ? normalizeQuantity(parsed, unit) : 0
 }
 
-/** "2.5" / "22" — the number alone, trailing zeros trimmed. */
+/** Editable quantity: preserve stored gram precision when opening a form. */
 export const formatQuantityValue = (value: number, unit?: string | null): string => {
   const normalized = normalizeQuantity(value, unit)
   return isWeighed(unit)
-    ? String(Number(normalized.toFixed(QTY_DECIMALS)))
+    ? formatDecimal(normalized, 3)
     : normalized.toLocaleString('uz-UZ')
 }
 
 /** "2.5 kg" / "22 dona" — the number with its unit, for display. */
 export const formatQuantity = (value: number, unit?: string | null): string =>
-  `${formatQuantityValue(value, unit)} ${unitLabel(unit)}`
+  `${formatTruncatedDecimal(value)} ${unitLabel(unit)}`
 
 /** How much one tap of +/- moves a quantity, per unit. */
 export const stepFor = (unit?: string | null): number => (isWeighed(unit) ? 0.1 : 1)
@@ -152,12 +153,14 @@ export const getInventoryMetrics = (
 
   const remaining = roundQty(Math.max(item.currentQuantity, 0))
   const start = roundQty(Math.max(item.startQuantity ?? item.openingQuantity ?? 0, 0))
-  const sold = roundQty(Math.max(item.sold ?? (start - remaining), 0))
+  const derivedSold = roundQty(Math.max(item.startQuantity !== undefined || item.openingQuantity !== undefined
+    ? start - remaining : (item.sold ?? 0) - (item.lockedSold ?? 0), 0))
+  const sold = roundQty(Math.max(item.sold ?? (derivedSold + (item.lockedSold ?? 0)), 0))
   // Server figures win when present: units sold at a negotiated price are
   // valued in the entry's locked accumulators, which sold x list price cannot
   // reproduce locally.
-  const revenue = roundMoney(Math.max(item.revenue ?? sold * storedSellPrice, 0))
-  const realizedProfit = roundMoney(item.realizedProfit ?? sold * (storedSellPrice - storedBuyPrice))
+  const revenue = roundMoney(Math.max(item.revenue ?? (item.lockedRevenue ?? 0) + derivedSold * storedSellPrice, 0))
+  const realizedProfit = roundMoney(item.realizedProfit ?? (item.lockedProfit ?? 0) + derivedSold * (storedSellPrice - storedBuyPrice))
   const stockSellValue = roundMoney(remaining * storedSellPrice)
   const stockBuyValue = roundMoney(remaining * storedBuyPrice)
   const potentialProfit = roundMoney(remaining * (storedSellPrice - storedBuyPrice))

@@ -4,6 +4,7 @@ import { inventoryApi, productsApi, debtorsApi, snapshotsApi, clearApiCache } fr
 import { getBusinessDate } from '../utils/businessDay'
 import {
   getInventoryTotals,
+  getInventoryMetrics,
   resolveSellPrice,
   resolveBuyPrice,
   roundQty,
@@ -221,7 +222,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         const newCurrent = roundQty(Math.max(0, item.currentQuantity - line.quantity))
         const startQuantity = item.startQuantity ?? item.openingQuantity ?? item.currentQuantity
 
-        return {
+        const updated = {
           ...item,
           currentQuantity: newCurrent,
           ...(offList
@@ -235,13 +236,15 @@ export const useAppStore = create<AppState>((set, get) => ({
               }
             : {}),
         }
+        return { ...updated, ...getInventoryMetrics({ ...updated, sold: undefined, revenue: undefined, realizedProfit: undefined }) }
       })
       return {
         inventoryPerDateCache: {
           ...state.inventoryPerDateCache,
-          [date]: { ...cached, items },
+          [date]: { ...cached, items, summary: undefined },
         },
         inventory: date === state.selectedDate ? items : state.inventory,
+        inventorySummary: date === state.selectedDate ? null : state.inventorySummary,
       }
     })
   },

@@ -1,3 +1,5 @@
+import { QuantityStack } from '../components/QuantityStack'
+import { sumQuantities, formatDecimal, formatInputMoney, parseInputMoney } from '../utils/quantities'
 import { syncNow } from '../store/syncEngine'
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useAppStore } from '../store/appStore'
@@ -14,6 +16,7 @@ import { getBusinessDate } from '../utils/businessDay'
 import {
   compareProducts,
   resolveSellPrice,
+  getInventoryMetrics,
   formatMoney,
   normalizeUnit,
   isWeighed,
@@ -26,7 +29,7 @@ import {
   normalizeQuantityInput,
   parseQuantityInput,
 } from '../utils/inventory'
-import { overlay, inputBase, btnPrimary, btnSecondary, formatInputAmount, parseFormattedAmount } from '../styles/shared'
+import { overlay, inputBase, btnPrimary, btnSecondary } from '../styles/shared'
 
 // Loading skeleton — content-shaped placeholders (search bar + hint + card
 // list) instead of a bare spinner, matching the pattern already established
@@ -299,14 +302,14 @@ export function SalesScreen() {
   }, [])
 
   const commitPrice = useCallback((productId: string, raw: string, listPrice: number) => {
-    const parsed = parseFormattedAmount(raw)
+    const parsed = parseInputMoney(raw)
     setPriceDrafts(prev => {
       const { [productId]: _removed, ...rest } = prev
       return rest
     })
     // Empty or unchanged means "no override" rather than "charge zero" — a
     // cleared field should read as the list price, not as a giveaway.
-    if (!raw.trim() || parsed === listPrice) {
+    if (!raw.trim() || parsed === roundMoney(listPrice)) {
       setPriceOverrides(prev => {
         const { [productId]: _removed, ...rest } = prev
         return rest
@@ -320,9 +323,9 @@ export function SalesScreen() {
   // an edit that resolves to the price already charged (e.g. a no-op blur)
   // still runs commitPrice directly so drafts get cleared normally.
   const commitPriceGuarded = useCallback((productId: string, raw: string, listPrice: number, currentPrice: number) => {
-    const parsed = parseFormattedAmount(raw)
-    const nextPrice = (!raw.trim() || parsed === listPrice) ? listPrice : roundMoney(Math.max(parsed, 0))
-    if (nextPrice === currentPrice) {
+    const parsed = parseInputMoney(raw)
+    const nextPrice = (!raw.trim() || parsed === roundMoney(listPrice)) ? listPrice : roundMoney(Math.max(parsed, 0))
+    if (nextPrice === roundMoney(currentPrice)) {
       commitPrice(productId, raw, listPrice)
       return
     }
@@ -475,6 +478,8 @@ export function SalesScreen() {
             }
           : {}),
       }
+      const updated = updatedByProductId[productId]
+      Object.assign(updated, getInventoryMetrics({ ...updated, sold: undefined, revenue: undefined, realizedProfit: undefined }))
     }
 
     // Reflect the sale in the UI immediately, as if it had succeeded
@@ -609,18 +614,6 @@ export function SalesScreen() {
           )}
         </div>
       </div>
-
-      <p style={{
-        fontSize: 13,
-        color: 'var(--color-text-secondary)',
-        marginBottom: 16,
-        padding: '8px 12px',
-        borderRadius: 6,
-        background: 'var(--color-primary-soft)',
-        border: '1px solid var(--color-border)',
-      }}>
-        {t('salesHint')}
-      </p>
 
       {/* Genuine fetch failure — distinct from "no stock to sell" */}
       {fetchError && <ErrorBanner onRetry={loadInventory} />}
@@ -862,10 +855,10 @@ export function SalesScreen() {
                           type="text"
                           inputMode="numeric"
                           aria-label={t('editPrice')}
-                          value={priceDrafts[item.productId] ?? formatInputAmount(String(price))}
+                          value={priceDrafts[item.productId] ?? formatInputMoney(formatDecimal(price, 2))}
                           onChange={(e) => setPriceDrafts(prev => ({
                             ...prev,
-                            [item.productId]: formatInputAmount(e.target.value),
+                            [item.productId]: formatInputMoney(e.target.value),
                           }))}
                           onBlur={(e) => commitPriceGuarded(item.productId, e.target.value, listPrice, price)}
                           onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
@@ -1042,16 +1035,15 @@ export function SalesScreen() {
               }}>
                 {formatMoney(totals.total)}
               </div>
-              {/* Only shown when a line was renegotiated below its list price,
-                  so the normal sale keeps a single clean number. */}
+              {/* Show the signed change from the catalog price. */}
               {hasDiscount && (
                 <div style={{ fontSize: 11.5, color: 'var(--color-text-secondary)', marginTop: 2 }}>
                   <span style={{ textDecoration: 'line-through', opacity: 0.7 }}>
                     {formatMoney(roundMoney(totals.subtotal + totals.lineDiscount))}
                   </span>
                   {' · '}
-                  <span style={{ color: 'var(--color-danger)' }}>
-                    −{formatMoney(totals.lineDiscount)}
+                  <span style={{ color: totals.lineDiscount < 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                    {totals.lineDiscount < 0 ? '+' : '−'}{formatMoney(Math.abs(totals.lineDiscount))}
                   </span>
                 </div>
               )}
@@ -1071,7 +1063,7 @@ export function SalesScreen() {
               <div style={{
                 fontSize: 19, fontWeight: 800, color: 'var(--color-metric-qty)',
                 fontVariantNumeric: 'tabular-nums',
-              }}>{formatQuantityValue(totalPieces, 'kg')}</div>
+              }}><QuantityStack quantities={sumQuantities(cartArray)} /></div>
             </div>
           </div>
         </div>

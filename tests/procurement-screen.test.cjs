@@ -1,3 +1,4 @@
+const { loadSource } = require('./helpers/load-source.cjs');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
@@ -160,6 +161,10 @@ function screen({
       },
     },
     require(name) {
+      if (name.endsWith('QuantityStack')) return { QuantityStack: 'QuantityStack' };
+      if (name.endsWith('/quantities') || name === './quantities') return loadSource('src/utils/quantities.ts');
+      if (name.endsWith('/inventory')) return loadSource('src/utils/inventory.ts');
+
       if (name === 'react') return hooks;
       if (name === 'react/jsx-runtime') return require(name);
       if (name === 'lucide-react' || name === 'lucide-react-native')

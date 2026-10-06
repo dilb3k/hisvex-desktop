@@ -1,3 +1,5 @@
+import { QuantityStack } from './QuantityStack'
+import { formatTruncatedDecimal, type UnitQuantities } from '../utils/quantities'
 import { useState } from 'react'
 import { BarChart3 } from 'lucide-react'
 import { formatMoney } from '../utils/formatters'
@@ -10,6 +12,7 @@ export interface ChartBucket {
   revenue: number
   profit: number
   qty: number
+  quantities?: UnitQuantities
   isCurrent: boolean
 }
 
@@ -20,7 +23,7 @@ export const METRIC_COLOR_VAR: Record<ChartMetric, string> = {
 }
 
 function formatMetricValue(metric: ChartMetric, value: number): string {
-  if (metric === 'qty') return `${Math.round(value).toLocaleString('uz-UZ')} dona`
+  if (metric === 'qty') return formatTruncatedDecimal(value)
   return formatMoney(value)
 }
 
@@ -71,7 +74,7 @@ export function StatBarChart({
   // Guard divide-by-zero: if every bucket is 0 (or there are no buckets at
   // all), there is nothing meaningful to plot — show the empty state instead
   // of a chart full of invisible/NaN-height bars.
-  const maxValue = buckets.length ? Math.max(0, ...buckets.map((b) => b[metric])) : 0
+  const maxValue = buckets.length ? Math.max(0, ...buckets.flatMap((b) => metric === 'qty' && b.quantities ? [b.quantities.dona, b.quantities.kg] : [b[metric]])) : 0
   const hasData = buckets.length > 0 && maxValue > 0
 
   if (!hasData) {
@@ -99,7 +102,6 @@ export function StatBarChart({
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height, padding: '0 2px' }}>
       {buckets.map((b) => {
         const raw = b[metric]
-        const pct = maxValue > 0 ? Math.max((raw / maxValue) * 100, raw > 0 ? 3 : 0) : 0
         const isHovered = hovered === b.key
         return (
           <div
@@ -136,21 +138,18 @@ export function StatBarChart({
                 }}
               >
                 <div style={{ opacity: 0.7, fontSize: 10, marginBottom: 2, fontWeight: 500 }}>{b.fullLabel}</div>
-                <div style={{ fontVariantNumeric: 'tabular-nums' }}>{formatMetricValue(metric, raw)}</div>
+                <div style={{ fontVariantNumeric: 'tabular-nums' }}>{metric === 'qty' && b.quantities ? <QuantityStack quantities={b.quantities} /> : formatMetricValue(metric, raw)}</div>
               </div>
             )}
-            <div
-              style={{
-                width: '100%',
-                height: `${pct}%`,
-                borderRadius: '4px 4px 0 0',
-                background: color,
-                opacity: b.isCurrent ? 1 : 0.35,
-                outline: isHovered ? `1px solid ${color}` : 'none',
-                outlineOffset: 1,
+            {(metric === 'qty' && b.quantities ? [b.quantities.dona, b.quantities.kg] : [raw]).map((value, index) => (
+              <div key={index} style={{
+                flex: 1, height: `${maxValue > 0 ? Math.max(value / maxValue * 100, value > 0 ? 3 : 0) : 0}%`,
+                marginLeft: index ? 2 : 0, borderRadius: '4px 4px 0 0',
+                background: color, opacity: (b.isCurrent ? 1 : 0.35) * (index ? 0.65 : 1),
+                outline: isHovered ? `1px solid ${color}` : 'none', outlineOffset: 1,
                 transition: 'height 0.3s ease, opacity 0.15s ease',
-              }}
-            />
+              }} />
+            ))}
           </div>
         )
       })}

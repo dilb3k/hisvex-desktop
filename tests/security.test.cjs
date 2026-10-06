@@ -18,8 +18,8 @@ test('native backend transport cannot be used as arbitrary fetch or redirected S
  const backend=load('electron/backend-request.ts',{'./trust':trust},{fetch:async(url,config)=>{calls++;seen=config;return new Response('{"ok":true}',{headers:{'Content-Type':'application/json'}})}})
  for(const url of ['file:///etc/passwd','https://attacker.test/api/x','https://hisvex-api.onrender.com@attacker.test/api/x','https://hisvex-api.onrender.com/not-api','http://localhost:5000/api/x']) await assert.rejects(backend.requestBackend({url},false))
  assert.equal(calls,0)
- const result=await backend.requestBackend({url:'https://hisvex-api.onrender.com/api/health',headers:{Origin:'null',Authorization:'Bearer test'},timeout:10000},false)
- assert.equal(result.status,200);assert.equal(seen.redirect,'error');assert.equal(seen.headers.has('Origin'),false);assert.equal(seen.headers.get('Authorization'),'Bearer test')
+ const result=await backend.requestBackend({url:'https://hisvex-api.onrender.com/api/health',headers:{Origin:'null',Authorization:'Bearer test','Accept-Language':'ru'},timeout:10000},false)
+ assert.equal(result.status,200);assert.equal(seen.redirect,'error');assert.equal(seen.headers.has('Origin'),false);assert.equal(seen.headers.get('Authorization'),'Bearer test');assert.equal(seen.headers.get('Accept-Language'),'ru')
 })
 test('all sensitive IPC handlers reject a remote frame and child frames; encryption failure writes nothing',async()=>{
  const handlers=new Map(),storage=new Map();let available=false

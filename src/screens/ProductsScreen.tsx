@@ -1,3 +1,4 @@
+import { formatInputMoney, parseInputMoney, formatDecimal } from '../utils/quantities'
 import { syncNow } from '../store/syncEngine'
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useAppStore } from '../store/appStore'
@@ -38,8 +39,6 @@ import {
   btnSecondary,
   btnDanger,
   formatMoney,
-  formatInputAmount,
-  parseFormattedAmount,
 } from '../styles/shared'
 
 const normalizeDigits = (text: string) => text.replace(/[^\d]/g, '')
@@ -314,8 +313,8 @@ export function ProductsScreen() {
   }, [products])
 
   const previewQty = parseQuantityInput(form.quantity, form.unit)
-  const previewBuy = parseFormattedAmount(form.buyPrice)
-  const previewSell = parseFormattedAmount(form.sellPrice)
+  const previewBuy = parseInputMoney(form.buyPrice)
+  const previewSell = parseInputMoney(form.sellPrice)
   const previewTotalCost = previewQty * previewBuy
   const previewExpectedProfit = previewQty * (previewSell - previewBuy)
   const previewMargin = previewSell > 0 && previewBuy > 0 ? ((previewSell - previewBuy) / previewSell * 100).toFixed(1) : '0'
@@ -348,8 +347,8 @@ export function ProductsScreen() {
         ? ''
         : formatQuantityValue(item.quantity, item.unit),
       unit: normalizeUnit(item.unit),
-      buyPrice: item.buyPrice ? formatInputAmount(String(item.buyPrice)) : '',
-      sellPrice: item.sellPrice ? formatInputAmount(String(item.sellPrice)) : '',
+      buyPrice: item.buyPrice ? formatInputMoney(formatDecimal(item.buyPrice, 2)) : '',
+      sellPrice: item.sellPrice ? formatInputMoney(formatDecimal(item.sellPrice, 2)) : '',
       image: item.image || item.imageHash,
       barcodes: item.barcodes ?? [],
     })
@@ -406,8 +405,8 @@ export function ProductsScreen() {
       name: form.name.trim(),
       quantity: parseQuantityInput(form.quantity, form.unit),
       unit: form.unit,
-      buyPrice: parseFormattedAmount(form.buyPrice),
-      sellPrice: parseFormattedAmount(form.sellPrice),
+      buyPrice: parseInputMoney(form.buyPrice),
+      sellPrice: parseInputMoney(form.sellPrice),
     })
     setFormErrors(next)
     return !hasValidationErrors(next)
@@ -439,8 +438,8 @@ export function ProductsScreen() {
       name: form.name.trim(),
       quantity: parseQuantityInput(form.quantity, form.unit),
       unit: form.unit,
-      buyPrice: parseFormattedAmount(form.buyPrice),
-      sellPrice: parseFormattedAmount(form.sellPrice),
+      buyPrice: parseInputMoney(form.buyPrice),
+      sellPrice: parseInputMoney(form.sellPrice),
       barcodes,
       image: form.image !== undefined ? form.image : editingProduct?.image,
       createdAt: editingProduct?.createdAt ?? now,
@@ -880,7 +879,7 @@ export function ProductsScreen() {
                   type="text"
                   placeholder="0"
                   value={form.buyPrice}
-                  onChange={(e) => { setForm((prev) => ({ ...prev, buyPrice: formatInputAmount(e.target.value) })); setFormErrors((prev) => ({ ...prev, buyPrice: '' })) }}
+                  onChange={(e) => { setForm((prev) => ({ ...prev, buyPrice: formatInputMoney(e.target.value) })); setFormErrors((prev) => ({ ...prev, buyPrice: '' })) }}
                   style={formErrors.buyPrice ? inputErrorStyle : inputBase}
                 />
                 {formErrors.buyPrice && <div style={errorText}>{formErrors.buyPrice}</div>}
@@ -892,7 +891,7 @@ export function ProductsScreen() {
                   type="text"
                   placeholder="0"
                   value={form.sellPrice}
-                  onChange={(e) => { setForm((prev) => ({ ...prev, sellPrice: formatInputAmount(e.target.value) })); setFormErrors((prev) => ({ ...prev, sellPrice: '' })) }}
+                  onChange={(e) => { setForm((prev) => ({ ...prev, sellPrice: formatInputMoney(e.target.value) })); setFormErrors((prev) => ({ ...prev, sellPrice: '' })) }}
                   style={formErrors.sellPrice ? inputErrorStyle : inputBase}
                 />
                 {formErrors.sellPrice && <div style={errorText}>{formErrors.sellPrice}</div>}

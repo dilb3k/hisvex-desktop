@@ -1,8 +1,11 @@
-import { escapeCsvCell } from "../utils/csv";
-import { useEffect, useState, useMemo, useCallback, forwardRef } from 'react'
+import { QuantityStack } from '../components/QuantityStack'
+import { getInventoryQuantities, type InventoryQuantities } from '../utils/quantities'
+import { statisticsReportCsv } from "../utils/statisticsReport";
+import { useEffect, useRef, useState, useMemo, useCallback, forwardRef } from 'react'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
-import { inventoryApi } from '../api/client'
+import { ReportDownloadDialog } from '../components/ReportDownloadDialog'
+import { inventoryApi, procurementApi } from '../api/client'
 import { useAppStore } from '../store/appStore'
 import dayjs from 'dayjs'
 import {
@@ -14,6 +17,7 @@ import { useAuthStore } from '../store/authStore'
 import { getBusinessDate } from '../utils/businessDay'
 import { formatMoney, spinner } from '../styles/shared'
 import {
+  getInventoryMetrics,
   resolveSellPrice,
   resolveBuyPrice,
   normalizeUnit,
@@ -65,28 +69,29 @@ interface ProductRankItem {
   unit: ProductUnit
   sold: number
   profit: number
+  revenue: number
 }
 
 function buildProductRankings(inventoryItems: any[]): ProductRankItem[] {
-  const seen = new Map<string, { sold: number; profit: number; name: string; unit: ProductUnit }>()
+  const seen = new Map<string, { sold: number; profit: number; revenue: number; name: string; unit: ProductUnit }>()
 
   for (const item of inventoryItems) {
     const p = item.product
     if (!p) continue
     const id = p._id || p.id
     if (!id) continue
-    const opening = item.startQuantity ?? item.openingQuantity ?? 0
-    const sold = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
+    const metrics = getInventoryMetrics(item)
+    const sold = metrics.sold
     const cur = seen.get(id) ?? {
       sold: 0,
       profit: 0,
+      revenue: 0,
       name: p.name || 'Noma\'lum',
       unit: normalizeUnit(item.unit ?? p.unit),
     }
     cur.sold += sold
-    const sp = resolveSellPrice(item, p)
-    const bp = resolveBuyPrice(item, p)
-    cur.profit += item.realizedProfit ?? (sold * (sp - bp))
+    cur.profit += metrics.realizedProfit
+    cur.revenue += metrics.revenue
     seen.set(id, cur)
   }
 
@@ -96,6 +101,7 @@ function buildProductRankings(inventoryItems: any[]): ProductRankItem[] {
     unit: totals.unit,
     sold: roundQty(totals.sold),
     profit: roundMoney(totals.profit),
+    revenue: roundMoney(totals.revenue),
   }))
 }
 
@@ -132,7 +138,7 @@ const STAT_VALUE: React.CSSProperties = {
 const METRIC_OPTIONS: { key: ChartMetric; label: string; colorVar: string }[] = [
   { key: 'revenue', label: t('metricRevenue') || 'Tushum', colorVar: 'var(--color-metric-revenue)' },
   { key: 'profit', label: t('netProfit') || 'Sof foyda', colorVar: 'var(--color-metric-profit)' },
-  { key: 'qty', label: t('soldPieces') || 'Sotilgan dona', colorVar: 'var(--color-metric-qty)' },
+  { key: 'qty', label: t('soldPieces') || 'Sotilgan miqdor', colorVar: 'var(--color-metric-qty)' },
 ]
 
 const s = {
@@ -408,6 +414,7 @@ function SectionEyebrow({ children, subtitle, first }: { children: React.ReactNo
 }
 
 interface Totals {
+  quantities: InventoryQuantities
   sellableItems: number
   soldItems: number
   sellableValue: number
@@ -419,9 +426,11 @@ interface Totals {
 }
 
 function buildTotals(summary: InventorySummary | null, items: any[]): Totals {
+  const quantities = getInventoryQuantities(items, summary)
   if (summary) {
     return {
-      sellableItems: summary.totalSold + summary.totalCurrent,
+      quantities,
+      sellableItems: roundQty(summary.totalSold + summary.totalCurrent),
       soldItems: summary.totalSold,
       sellableValue: summary.totalRevenue + summary.totalStockSellValue,
       earnedRevenue: summary.totalRevenue,
@@ -435,14 +444,10 @@ function buildTotals(summary: InventorySummary | null, items: any[]): Totals {
   // day-entry in the range.
   let sold = 0, revenue = 0, profit = 0
   for (const item of items) {
-    const qty = item.currentQuantity ?? 0
-    const p = item.product
-    const sellPrice = resolveSellPrice(item, p)
-    const buyPrice = resolveBuyPrice(item, p)
-    const soldQty = item.sold ?? Math.max((item.startQuantity ?? item.openingQuantity ?? 0) - qty, 0)
-    sold += soldQty
-    revenue += soldQty * sellPrice
-    profit += item.realizedProfit ?? (soldQty * (sellPrice - buyPrice))
+    const metrics = getInventoryMetrics(item)
+    sold += metrics.sold
+    revenue += metrics.revenue
+    profit += metrics.realizedProfit
   }
 
   // Stock metrics (remaining pieces/value) are a POINT-IN-TIME snapshot, not
@@ -474,14 +479,15 @@ function buildTotals(summary: InventorySummary | null, items: any[]): Totals {
   }
 
   return {
-    sellableItems: sold + remaining,
-    soldItems: sold,
-    sellableValue: revenue + stockSellValue,
-    earnedRevenue: revenue,
-    possibleProfit: profit + stockProfit,
-    earnedProfit: profit,
-    remainingItems: remaining,
-    stockValue: stockSellValue,
+    quantities,
+    sellableItems: roundQty(sold + remaining),
+    soldItems: roundQty(sold),
+    sellableValue: roundMoney(revenue + stockSellValue),
+    earnedRevenue: roundMoney(revenue),
+    possibleProfit: roundMoney(profit + stockProfit),
+    earnedProfit: roundMoney(profit),
+    remainingItems: roundQty(remaining),
+    stockValue: roundMoney(stockSellValue),
   }
 }
 
@@ -538,6 +544,10 @@ export function StatisticsScreen() {
   const [fetchError, setFetchError] = useState(false)
   const [metric, setMetric] = useState<ChartMetric>('revenue')
   const [showAllTime, setShowAllTime] = useState(false)
+  const [showDownload, setShowDownload] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const exportBusy = useRef(false)
+  const showToast = useAppStore(s => s.showToast)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [pickerDate, setPickerDate] = useState(selectedDate)
   const [allTimeFrom, setAllTimeFrom] = useState(() => dayjs(getBusinessDate()).subtract(1, 'year').format('YYYY-MM-DD'))
@@ -639,26 +649,18 @@ export function StatisticsScreen() {
 
   const totals = useMemo(() => {
     if (summary) {
-      return { revenue: summary.totalRevenue, profit: summary.totalProfit, sold: summary.totalSold }
+      return { revenue: roundMoney(summary.totalRevenue), profit: roundMoney(summary.totalProfit), sold: roundQty(summary.totalSold) }
     }
     const revenue = inventoryItems.reduce((s, item) => {
-      const sellPrice = resolveSellPrice(item, item.product)
-      const opening = item.startQuantity ?? item.openingQuantity ?? 0
-      const soldQty = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
-      return s + soldQty * sellPrice
+      return s + getInventoryMetrics(item).revenue
     }, 0)
     const profit = inventoryItems.reduce((s, item) => {
-      const sellPrice = resolveSellPrice(item, item.product)
-      const buyPrice = resolveBuyPrice(item, item.product)
-      const opening = item.startQuantity ?? item.openingQuantity ?? 0
-      const soldQty = item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0)
-      return s + (item.realizedProfit ?? (soldQty * (sellPrice - buyPrice)))
+      return s + getInventoryMetrics(item).realizedProfit
     }, 0)
     const sold = inventoryItems.reduce((s, item) => {
-      const opening = item.startQuantity ?? item.openingQuantity ?? 0
-      return s + (item.sold ?? Math.max(opening - (item.currentQuantity ?? 0), 0))
+      return s + getInventoryMetrics(item).sold
     }, 0)
-    return { revenue, profit, sold }
+    return { revenue: roundMoney(revenue), profit: roundMoney(profit), sold: roundQty(sold) }
   }, [inventoryItems, summary])
 
   const margin = totals.revenue > 0 ? Math.round((totals.profit / totals.revenue) * 100) : 0
@@ -666,11 +668,11 @@ export function StatisticsScreen() {
   const allProductStats = useMemo(() => buildProductRankings(inventoryItems), [inventoryItems])
 
   const topProducts = useMemo(() =>
-    allProductStats.filter((p) => p.sold > 0).sort((a, b) => b.sold - a.sold || b.profit - a.profit),
+    allProductStats.filter((p) => p.sold > 0).sort((a, b) => b.revenue - a.revenue || a.name.localeCompare(b.name)),
   [allProductStats])
 
   const leastProducts = useMemo(() =>
-    [...allProductStats].sort((a, b) => a.sold - b.sold || a.profit - b.profit),
+    [...allProductStats].sort((a, b) => a.revenue - b.revenue || a.name.localeCompare(b.name)),
   [allProductStats])
 
   const allTimeTotals = useMemo(() => {
@@ -702,61 +704,8 @@ export function StatisticsScreen() {
 
   const handleDownload = async () => {
     if (!inventoryItems.length) return
-    // Column order/format matches the paper/Excel ledger businesses already
-    // keep (№, Tovar, Olingan/Sotilish narhi, Soni/Qoldi/Sotildi, then the
-    // four money columns Olingan/Umumiy/Sotilgan/Qoldi summa, Foyda) — not
-    // the app's own internal terminology, so an exported report drops
-    // straight into the same layout a bar owner is already used to.
-    const rows = [['№', 'Tovar', 'Olingan narhi', 'Sotilish narhi', 'Soni', 'Qoldi', 'Sotildi', 'Olingan summa', 'Umumiy summa', 'Sotilgan summa', 'Qoldi summasi', 'Foyda']]
-    let totalSoni = 0, totalQoldi = 0, totalSotildi = 0
-    let totalOlinganSumma = 0, totalUmumiySumma = 0, totalSotilganSumma = 0, totalQoldiSumma = 0, totalFoyda = 0
-    let idx = 0
-    for (const item of inventoryItems) {
-      idx += 1
-      const p = item.product
-      const name = p?.name || 'Noma\'lum'
-      const buy = resolveBuyPrice(item, p)
-      const sell = resolveSellPrice(item, p)
-      const unit = normalizeUnit(item.unit ?? p?.unit)
-      const opening = roundQty(item.startQuantity ?? item.openingQuantity ?? 0)
-      const remaining = roundQty(Math.max(item.currentQuantity ?? 0, 0))
-      const sold = item.sold ?? roundQty(Math.max(opening - remaining, 0))
-      const olinganSumma = opening * buy
-      const umumiySumma = opening * sell
-      const sotilganSumma = item.revenue ?? sold * sell
-      const qoldiSumma = remaining * sell
-      const foyda = (sell - buy) * opening
-      rows.push([
-        String(idx), name, String(buy), String(sell),
-        formatQuantityValue(opening, unit), formatQuantityValue(remaining, unit), formatQuantityValue(sold, unit),
-        String(olinganSumma), String(umumiySumma), String(sotilganSumma), String(qoldiSumma), String(foyda),
-      ])
-      totalSoni += opening
-      totalQoldi += remaining
-      totalSotildi += sold
-      totalOlinganSumma += olinganSumma
-      totalUmumiySumma += umumiySumma
-      totalSotilganSumma += sotilganSumma
-      totalQoldiSumma += qoldiSumma
-      totalFoyda += foyda
-    }
-    rows.push([
-      '', 'Jami', '', '', String(totalSoni), String(totalQoldi), String(totalSotildi),
-      String(totalOlinganSumma), String(totalUmumiySumma), String(totalSotilganSumma), String(totalQoldiSumma), String(totalFoyda),
-    ])
-
-    // Escape embedded double quotes in every cell before wrapping it in
-    // quotes — a product name/note containing a literal `"` would otherwise
-    // break the CSV's column structure (backported from web's fix).
-    //
-    // `sep=,` as the first line is a Microsoft-specific hint: without it,
-    // Excel picks its delimiter from the OS's regional "list separator"
-    // setting, which on an Uzbek/Russian-locale Windows machine is `;`, not
-    // `,` — so every row lands crammed into column A instead of split into
-    // columns. The hint forces comma parsing regardless of locale.
-    const csv = 'sep=,\n' + rows.map(r => r.map(escapeCsvCell).join(',')).join('\n')
+    const content = statisticsReportCsv(inventoryItems, ['№', t('products'), t('buyPrice'), t('sellPrice'), t('soldPieces'), t('soldValue'), t('netProfit'), t('remainingPieces'), t('remainingStockValue')], t('exportTotal'))
     const fileName = `hisobot-${range.from}-${range.to}.csv`
-    const content = '﻿' + csv
 
     // Desktop build: ask where to save via a native dialog every time,
     // instead of silently dropping into the OS default Downloads folder.
@@ -773,6 +722,31 @@ export function StatisticsScreen() {
     a.download = fileName
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const handleReportDownload = async (report: 'statistics' | 'receipts') => {
+    if (exportBusy.current || isLocked) return
+    exportBusy.current = true
+    setExporting(true)
+    const token = useAuthStore.getState().token
+    const assertActive = () => { if (!token || useAuthStore.getState().token !== token) throw Error('Account changed') }
+    try {
+      assertActive()
+      if (report === 'statistics') await handleDownload()
+      else {
+        const body = await procurementApi.export({ period: 'custom', ...range, report: 'receipts' }, 'csv')
+        assertActive()
+        const fileName = `kirimlar-${range.from}-${range.to}.csv`
+        if (window.electronAPI?.saveCsv) await window.electronAPI.saveCsv(fileName, new TextDecoder().decode(body))
+        else {
+          const url = URL.createObjectURL(new Blob([body], { type: 'text/csv;charset=utf-8' }))
+          const a = document.createElement('a'); a.href = url; a.download = fileName
+          a.click(); URL.revokeObjectURL(url)
+        }
+      }
+      setShowDownload(false)
+    } catch { if (useAuthStore.getState().token === token) showToast(t('reportDownloadError'), 'error') }
+    finally { exportBusy.current = false; setExporting(false) }
   }
 
   const fetchAllTime = useCallback(async (from: string, to: string) => {
@@ -810,8 +784,8 @@ export function StatisticsScreen() {
 
   function renderRankItem(item: ProductRankItem, index: number, isBlacklist: boolean, maxSold = 1) {
     const unsold = item.sold <= 0
-    const ratio = item.sold > 0 ? Math.min(item.sold / maxSold, 1) : 0
-    const negative = item.profit < 0
+    const ratio = item.revenue > 0 ? Math.min(item.revenue / maxSold, 1) : 0
+    const negative = item.revenue < 0
     return (
       <div key={item.id} style={s.rankItem}>
         <div style={s.rankBadge(isBlacklist, index)}>
@@ -820,9 +794,9 @@ export function StatisticsScreen() {
         <div style={s.rankInfo}>
           <div style={s.rankNameRow}>
             <div style={s.rankName}>{item.name}</div>
-            <span style={s.rankProfit(isBlacklist, item.sold, item.profit)}>
+            <span title={t('soldValue')} style={s.rankProfit(isBlacklist, item.sold, item.revenue)}>
               {negative && <TrendingDown size={11} />}
-              {formatMoney(item.profit)}
+              {formatMoney(item.revenue)}
             </span>
           </div>
           <div style={s.rankMetrics}>
@@ -845,7 +819,7 @@ export function StatisticsScreen() {
     const limit = 5
     const limited = rankItems.length > limit && !showAll
     const displayItems = limited ? rankItems.slice(0, limit) : rankItems
-    const maxSold = Math.max(...rankItems.map((i) => i.sold), 1)
+    const maxSold = Math.max(...rankItems.map((i) => i.revenue), 1)
 
     return (
       <div style={isBlacklist ? s.cardBlacklist : CARD}>
@@ -880,7 +854,7 @@ export function StatisticsScreen() {
           <p style={s.pageSubtitle}>{periodLabel}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={handleDownload} style={s.secondaryBtn}>
+          <button onClick={() => setShowDownload(true)} disabled={exporting} style={s.secondaryBtn}>
             <Download size={16} />
             {t('downloadStatistics') || 'Yuklab olish'}
           </button>
@@ -951,7 +925,7 @@ export function StatisticsScreen() {
             <div style={s.heroLabel}><Wallet size={15} /> {t('totalRevenue') || 'Jami tushum'}</div>
             <div style={s.heroValue}>{formatMoney(totals.revenue)}</div>
             <div style={s.heroChips}>
-              <span style={s.heroChip}>{t('soldPieces') || 'Sotilgan dona'}: {formatQuantityValue(totals.sold, 'kg')}</span>
+              <span style={s.heroChip}>{t('soldPieces') || 'Sotilgan miqdor'}: <QuantityStack quantities={getInventoryQuantities(inventoryItems, summary).sold} /></span>
               <span style={s.heroChip}>{t('marginPercent') || 'Marja foizi'}: {margin}%</span>
             </div>
           </div>
@@ -974,7 +948,7 @@ export function StatisticsScreen() {
                 icon: <Wallet size={18} />,
                 label: t('soldValue') || 'Sotilgan qiymat',
                 value: formatMoney(totals.revenue),
-                sub: `${t('soldPieces') || 'Sotilgan dona'}: ${formatQuantityValue(totals.sold, 'kg')}`,
+                sub: <QuantityStack quantities={getInventoryQuantities(inventoryItems, summary).sold} />,
                 color: 'var(--color-metric-revenue)',
                 bg: 'var(--color-metric-revenue-soft)',
                 negative: false,
@@ -990,15 +964,15 @@ export function StatisticsScreen() {
               },
               {
                 icon: <ShoppingCart size={18} />,
-                label: t('soldPieces') || 'Sotilgan dona',
-                value: formatQuantityValue(totals.sold, 'kg'),
+                label: t('soldPieces') || 'Sotilgan miqdor',
+                value: <QuantityStack quantities={getInventoryQuantities(inventoryItems, summary).sold} />,
                 sub: `${t('soldValue') || 'Sotilgan qiymat'}: ${formatMoney(totals.revenue)}`,
                 color: 'var(--color-metric-qty)', bg: 'var(--color-metric-qty-soft)', negative: false,
               },
               {
                 icon: <Boxes size={18} />,
                 label: t('sellingNow') || 'Sotuvda (qoldiq)',
-                value: overallTotals ? formatQuantityValue(overallTotals.remainingItems, 'kg') : '0',
+                value: <QuantityStack quantities={overallTotals?.quantities.current ?? { dona: 0, kg: 0 }} />,
                 sub: overallTotals
                   ? `${t('remainingStockValue') || 'Qolgan sklad qiymati'}: ${formatMoney(overallTotals.stockValue)}`
                   : undefined,
@@ -1035,11 +1009,11 @@ export function StatisticsScreen() {
                 <div style={s.statsGrid}>
                   <div style={s.statItem}>
                     <p style={STAT_LABEL}>{t('totalSellablePieces')}</p>
-                    <p style={STAT_VALUE}>{overallTotals.sellableItems}</p>
+                    <p style={STAT_VALUE}><QuantityStack quantities={overallTotals.quantities.sellable} /></p>
                   </div>
                   <div style={s.statItem}>
-                    <p style={STAT_LABEL}>{t('soldPieces') || 'Sotilgan dona'}</p>
-                    <p style={STAT_VALUE}>{overallTotals.soldItems}</p>
+                    <p style={STAT_LABEL}>{t('soldPieces') || 'Sotilgan miqdor'}</p>
+                    <p style={STAT_VALUE}><QuantityStack quantities={overallTotals.quantities.sold} /></p>
                   </div>
                   <div style={s.statItem}>
                     <p style={STAT_LABEL}>{t('totalSellValue')}</p>
@@ -1059,7 +1033,7 @@ export function StatisticsScreen() {
                   </div>
                   <div style={s.statItem}>
                     <p style={STAT_LABEL}>{t('remainingPieces')}</p>
-                    <p style={STAT_VALUE}>{overallTotals.remainingItems}</p>
+                    <p style={STAT_VALUE}><QuantityStack quantities={overallTotals.quantities.current} /></p>
                   </div>
                   <div style={s.statItem}>
                     <p style={STAT_LABEL}>{t('remainingStockValue')}</p>
@@ -1075,6 +1049,7 @@ export function StatisticsScreen() {
 
           <RankingCardComponent
             title={t('topProductsLabel') || 'Top mahsulotlar'}
+            subtitle={t('rankingByRevenue')}
             items={topProducts}
           />
 
@@ -1116,6 +1091,8 @@ export function StatisticsScreen() {
       )}
 
       {/* All Time Modal */}
+      <ReportDownloadDialog visible={showDownload} busy={exporting} canExportStatistics={!loading && inventoryItems.length > 0} periodLabel={periodLabel} onSelect={report => { void handleReportDownload(report) }} onClose={() => setShowDownload(false)} />
+
       {showAllTime && (
         <div style={s.overlay} onClick={() => setShowAllTime(false)}>
           <div style={{ ...s.modal, maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
@@ -1175,11 +1152,11 @@ export function StatisticsScreen() {
                 <div style={s.statsGrid}>
                   <div style={s.statItem}>
                     <p style={STAT_LABEL}>{t('totalSellablePieces')}</p>
-                    <p style={STAT_VALUE}>{allTimeTotals.sellableItems}</p>
+                    <p style={STAT_VALUE}><QuantityStack quantities={allTimeTotals.quantities.sellable} /></p>
                   </div>
                   <div style={s.statItem}>
-                    <p style={STAT_LABEL}>{t('soldPieces') || 'Sotilgan dona'}</p>
-                    <p style={STAT_VALUE}>{allTimeTotals.soldItems}</p>
+                    <p style={STAT_LABEL}>{t('soldPieces') || 'Sotilgan miqdor'}</p>
+                    <p style={STAT_VALUE}><QuantityStack quantities={allTimeTotals.quantities.sold} /></p>
                   </div>
                   <div style={s.statItem}>
                     <p style={STAT_LABEL}>{t('totalSellValue')}</p>
@@ -1199,7 +1176,7 @@ export function StatisticsScreen() {
                   </div>
                   <div style={s.statItem}>
                     <p style={STAT_LABEL}>{t('remainingPieces')}</p>
-                    <p style={STAT_VALUE}>{allTimeTotals.remainingItems}</p>
+                    <p style={STAT_VALUE}><QuantityStack quantities={allTimeTotals.quantities.current} /></p>
                   </div>
                   <div style={s.statItem}>
                     <p style={STAT_LABEL}>{t('remainingStockValue')}</p>

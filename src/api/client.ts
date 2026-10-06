@@ -2,6 +2,10 @@ import type { ProcurementReceipt, ProcurementSummary, ProcurementQuery, Procurem
 import { nativeBackendAdapter } from "./nativeAdapter";
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import rawAxios from 'axios'
+import { getLanguage } from '../i18n'
+import { translateApiMessage } from '../utils/apiErrorMessages'
+
+const errorMessage = (message: string) => translateApiMessage(message, getLanguage())
 import { createManualMutationRegistry, isDurableManualMutation, isDefinitiveMutationRejection, type ManualIntent } from '../utils/manualMutationIntent'
 import type {
   AuthResponse,
@@ -179,7 +183,7 @@ const api = axios.create({
 
 let manualLock: Promise<unknown> = Promise.resolve()
 function manualRegistry(owner: string, epoch: number) {
-  const assert = () => { if (owner !== getActiveUser() || epoch !== authEpoch) throw Error('Hisob yoki sessiya o‘zgardi') }
+  const assert = () => { if (owner !== getActiveUser() || epoch !== authEpoch) throw Error(errorMessage('Hisob yoki sessiya o‘zgardi')) }
   const key = (slot: string) => `hisvex-manual-v1:${owner}:${slot}`
   return createManualMutationRegistry({
     read: async slot => { const raw = localStorage.getItem(key(slot)); return raw ? JSON.parse(raw) as ManualIntent : null },
@@ -197,16 +201,17 @@ function normalizeIds(obj: unknown): void {
 }
 
 api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
-  if((config as any)._authEpoch!==undefined && (config as any)._authEpoch!==authEpoch) throw Error('Sessiya o‘zgardi')
+  config.headers['Accept-Language'] = getLanguage()
+  if((config as any)._authEpoch!==undefined && (config as any)._authEpoch!==authEpoch) throw Error(errorMessage('Sessiya o‘zgardi'))
   ;(config as any)._authEpoch=authEpoch
   ;(config as any)._cacheGeneration=cacheGeneration
   const requestOwner = config.headers['X-Account-ID']
-  if (requestOwner && requestOwner !== getActiveUser()) throw new Error('Hisob o‘zgardi')
+  if (requestOwner && requestOwner !== getActiveUser()) throw new Error(errorMessage('Hisob o‘zgardi'))
   if (getActiveUser()) config.headers['X-Account-ID'] = getActiveUser()
   config.headers['X-Client-Protocol']='2'
   if (!config.headers['Idempotency-Key'] && isDurableManualMutation(config.method, config.url)) {
     const owner = getActiveUser()
-    if (!owner) throw Error('Avval hisobga kiring')
+    if (!owner) throw Error(errorMessage('Avval hisobga kiring'))
     const registry = manualRegistry(owner, authEpoch)
     const slot = `${config.method}:${config.url}`
     const intent = await registry.claim(slot, { body: typeof config.data === 'string' ? JSON.parse(config.data) : config.data, params: config.params })
@@ -260,19 +265,19 @@ function handleSessionExpired(
   window.location.hash = '#/login'
   if (data && typeof data === 'object') {
     if ('error' in data && data.error && typeof data.error === 'object' && 'message' in data.error && typeof data.error.message === 'string') {
-      return new Error(data.error.message)
+      return new Error(errorMessage(data.error.message))
     }
     if ('message' in data && typeof data.message === 'string') {
-      return new Error(data.message)
+      return new Error(errorMessage(data.message))
     }
   }
-  return new Error('Avtorizatsiya tugagan. Qayta kiring.')
+  return new Error(errorMessage('Avtorizatsiya tugagan. Qayta kiring.'))
 }
 
 api.interceptors.response.use(
   async (response) => {
-    if((response.config as any)._authEpoch!==authEpoch) throw Error('Hisob yoki sessiya o‘zgardi')
-    if (response.config.headers['X-Account-ID'] && response.config.headers['X-Account-ID'] !== getActiveUser()) throw new Error('Hisob o‘zgardi')
+    if((response.config as any)._authEpoch!==authEpoch) throw Error(errorMessage('Hisob yoki sessiya o‘zgardi'))
+    if (response.config.headers['X-Account-ID'] && response.config.headers['X-Account-ID'] !== getActiveUser()) throw new Error(errorMessage('Hisob o‘zgardi'))
     const manual = (response.config as any)._manualIntent
     if (manual && response.status !== 202 && response.data?.success !== false) await manual.registry.acknowledge(manual.slot, manual.id)
     const body = response.data
@@ -289,8 +294,8 @@ api.interceptors.response.use(
   },
   async (error: AxiosError<{ success?: boolean; error?: { message?: string; details?: unknown }; message?: string }>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean; _failoverRetried?: boolean }
-    if(originalRequest && (originalRequest as any)._authEpoch!==authEpoch) return Promise.reject(Error('Hisob yoki sessiya o‘zgardi'))
-    if (originalRequest?.headers['X-Account-ID'] && originalRequest.headers['X-Account-ID'] !== getActiveUser()) return Promise.reject(new Error('Hisob o‘zgardi'))
+    if(originalRequest && (originalRequest as any)._authEpoch!==authEpoch) return Promise.reject(Error(errorMessage('Hisob yoki sessiya o‘zgardi')))
+    if (originalRequest?.headers['X-Account-ID'] && originalRequest.headers['X-Account-ID'] !== getActiveUser()) return Promise.reject(new Error(errorMessage('Hisob o‘zgardi')))
     const manual = (originalRequest as any)?._manualIntent
     if (manual && isDefinitiveMutationRejection(error.response?.status, error.response?.data)) await manual.registry.acknowledge(manual.slot, manual.id)
     const url = originalRequest?.url ?? ''
@@ -326,7 +331,7 @@ api.interceptors.response.use(
       const previousToken=apiToken ?? ''
       const pending = refreshPromise ?? (refreshPromise = (async () => {
         try {
-          const res = await rawAxios.post(`${activeApiBaseUrl()}/auth/refresh`, { refreshToken: refreshingToken }, { timeout: DEFAULT_TIMEOUT_MS })
+          const res = await rawAxios.post(`${activeApiBaseUrl()}/auth/refresh`, { refreshToken: refreshingToken }, { timeout: DEFAULT_TIMEOUT_MS, headers: { 'Accept-Language': getLanguage() } })
           if(refreshEpoch!==authEpoch) return 'changed' as const
           const body = res.data
           const data = body && typeof body === 'object' && 'success' in body && 'data' in body ? body.data : body
@@ -345,8 +350,8 @@ api.interceptors.response.use(
         }
       })().finally(() => { if(refreshEpoch===authEpoch) refreshPromise = null }))
       return pending.then((result) => {
-        if(refreshEpoch!==authEpoch || result==='changed') return Promise.reject(Error('Hisob yoki sessiya o‘zgardi'))
-        if(result==='network') return Promise.reject(Object.assign(Error('Tokenni yangilash uchun server bilan aloqa yo‘q'),{code:'REFRESH_NETWORK_ERROR'}))
+        if(refreshEpoch!==authEpoch || result==='changed') return Promise.reject(Error(errorMessage('Hisob yoki sessiya o‘zgardi')))
+        if(result==='network') return Promise.reject(Object.assign(Error(errorMessage('Tokenni yangilash uchun server bilan aloqa yo‘q')),{code:'REFRESH_NETWORK_ERROR'}))
         if (result === 'failed') {
           return Promise.reject(handleSessionExpired(error))
         }
@@ -360,11 +365,11 @@ api.interceptors.response.use(
     }
 
     if (error.code === 'ECONNABORTED') {
-      return Promise.reject(Object.assign(new Error("So'rov vaqti tugadi. Internet aloqasini tekshiring."), { code: 'ECONNABORTED' }))
+      return Promise.reject(Object.assign(new Error(errorMessage("So'rov vaqti tugadi. Internet aloqasini tekshiring.")), { code: 'ECONNABORTED' }))
     }
 
     if (error.code === 'ERR_NETWORK') {
-      return Promise.reject(Object.assign(new Error('Tarmoq xatoligi. Server bilan aloqa yo\'q.'), { code: 'ERR_NETWORK' }))
+      return Promise.reject(Object.assign(new Error(errorMessage('Tarmoq xatoligi. Server bilan aloqa yo\'q.')), { code: 'ERR_NETWORK' }))
     }
 
     const data = error.response?.data
@@ -389,7 +394,7 @@ api.interceptors.response.use(
       message = error.message || 'API xatoligi'
     }
 
-    return Promise.reject(code ? Object.assign(new Error(message), { code }) : new Error(message))
+    return Promise.reject(code ? Object.assign(new Error(errorMessage(message)), { code }) : new Error(errorMessage(message)))
   },
 )
 

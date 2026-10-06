@@ -11,7 +11,7 @@ function load(file,mocks={},extra={}) {
   // setInterval/clearInterval are no-ops: client.ts's health-recheck timer
   // isn't what this suite is testing, and a real 3-minute interval would
   // otherwise keep the test process alive.
-  vm.runInNewContext(code,{exports,require:name=>mocks[name]??(name==='../utils/manualMutationIntent'?load('src/utils/manualMutationIntent.ts'):require(name)),crypto:webcrypto,TextEncoder,console,setInterval:()=>0,clearInterval:()=>{},...extra})
+  vm.runInNewContext(code,{exports,require:name=>mocks[name]??(name==='../utils/manualMutationIntent'?load('src/utils/manualMutationIntent.ts'):name==='../utils/apiErrorMessages'?load('src/utils/apiErrorMessages.ts'):require(name)),crypto:webcrypto,TextEncoder,console,setInterval:()=>0,clearInterval:()=>{},...extra})
   return exports
 }
 
@@ -30,7 +30,9 @@ function mockAdapter(responses) {
 }
 
 function setup(responses, storage = new Map()) {
+  let language='uz'
   const mods=load('src/api/client.ts',{
+    '../i18n':{getLanguage:()=>language},
     './nativeAdapter':{nativeBackendAdapter:async()=>{throw Error('not used in this test')}},
     '../store/offlineQueue':{getActiveUser:()=>'owner-1'},
     '../constants':{API_BASE_URL:'https://primary.test/api',API_BACKUP_URL:'https://backup.test/api'},
@@ -41,10 +43,25 @@ function setup(responses, storage = new Map()) {
   const calls=[]
   const adapter=mockAdapter(responses)
   api.defaults.adapter=async config=>{calls.push({baseURL:config.baseURL,method:config.method,id:config.headers['Idempotency-Key']});return adapter(config)}
-  return {api,calls,storage}
+  return {api,calls,storage,setLanguage:value=>language=value}
 }
 
 const RAILWAY_404_BODY={status:'error',code:404,message:'Application not found',request_id:'vQjzBoa2QEiUe6rGs_GTAg'}
+
+test('login error and outgoing header follow a language switch without dropping the error code',async()=>{
+  const h=setup([]),headers=[]
+  h.api.defaults.adapter=async config=>{headers.push(config.headers['Accept-Language']);throw new AxiosError('unauthorized','ERR_BAD_REQUEST',config,undefined,{config,status:401,headers:{},data:{success:false,error:{message:'Invalid username or password',code:'INVALID_CREDENTIALS'}}})}
+  await assert.rejects(h.api.post('/auth/login',{}),error=>error.message==='Login yoki parol noto‘g‘ri'&&error.code==='INVALID_CREDENTIALS')
+  h.setLanguage('ru')
+  await assert.rejects(h.api.post('/auth/login',{}),error=>error.message==='Неверный логин или пароль'&&error.code==='INVALID_CREDENTIALS')
+  assert.deepEqual(headers,['uz','ru'])
+})
+
+test('timeout text is localized and the timeout discriminator is retained',async()=>{
+  const h=setup([]);h.setLanguage('ru')
+  h.api.defaults.adapter=async config=>{throw new AxiosError('timeout','ECONNABORTED',config)}
+  await assert.rejects(h.api.post('/auth/login',{}),error=>error.message==='Время ожидания истекло. Проверьте интернет.'&&error.code==='ECONNABORTED')
+})
 
 test('a real Railway "Application not found" 404 fails over to the backup host exactly once',async()=>{
   const {api,calls}=setup([

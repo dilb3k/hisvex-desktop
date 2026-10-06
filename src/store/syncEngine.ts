@@ -100,7 +100,7 @@ async function performSync(owner: string, isCursorResetRetry = false): Promise<S
         const confirmed = items.filter(item => data.acknowledged!.some(ack => ack.entity === entity && ack.localId === item.localId && (kind === 'operation' || ack.updatedAt === item.updatedAt)))
         await removeSynced(kind, confirmed, owner)
       }
-      rejectionMessages.push(...data.rejected.map(item => `${item.localId}: ${item.reason}`))
+      rejectionMessages.push(...data.rejected.map(item => `${item.localId}: ${item.message || item.reason}`))
     }
     let cursor: string | undefined
     let checkpoint = localStorage.getItem(checkpointKey(owner)) ?? undefined

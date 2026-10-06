@@ -1,5 +1,8 @@
+import { formatDecimal, sumQuantities } from './quantities'
 export type ProcurementPeriod = 'day' | 'week' | 'month' | 'year' | 'custom'
 export type ProcurementQuery = {
+  report?: 'analytics' | 'receipts'
+
   period?: ProcurementPeriod
   from?: string
   to?: string
@@ -92,17 +95,8 @@ export type ProcurementAnalytics = {
   }[]
 }
 export const procurementMoney = (v: number) =>
-  v.toLocaleString('uz-UZ', { maximumFractionDigits: 2 })
-export const procurementQuantity = (
-  items: { unit: 'dona' | 'kg'; quantity: number }[],
-) =>
-  items.reduce(
-    (v, item) => ({
-      ...v,
-      [item.unit]: Math.round((v[item.unit] + item.quantity) * 1000) / 1000,
-    }),
-    { dona: 0, kg: 0 },
-  )
+  formatDecimal(v, 2, true)
+export const procurementQuantity = sumQuantities
 export const priceChange = (previous: number, next: number) =>
   previous > 0 && Number.isFinite(next)
     ? Math.round((next / previous - 1) * 10000) / 100

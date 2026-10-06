@@ -1,4 +1,6 @@
 'use client'
+import { QuantityStack } from '../components/QuantityStack'
+import { formatQuantity } from '../utils/inventory'
 import { useEffect, useRef, useState } from 'react'
 import { procurementApi } from '../api/client'
 import { useAuthStore } from '../store/authStore'
@@ -37,7 +39,7 @@ export function ProcurementKpis({ revision }: { revision: unknown }) {
   }, [revision, identity])
   return (
     <div className="pi-kpis" aria-live="polite">
-      {[
+      {([
         [
           'Bugungi kirim',
           data ? money(data.todaySpend) + ' so‘m' : error ? 'Yuklanmadi' : '…',
@@ -50,13 +52,13 @@ export function ProcurementKpis({ revision }: { revision: unknown }) {
           'Oxirgi partiya',
           data
             ? data.lastBatch
-              ? `${data.lastBatch.quantities.dona} dona · ${data.lastBatch.quantities.kg} kg`
+              ? <QuantityStack quantities={data.lastBatch.quantities} />
               : 'Hali kirim yo‘q'
             : error
               ? 'Yuklanmadi'
               : '…',
         ],
-      ].map(([title, value]) => (
+      ] as const).map(([title, value]) => (
         <div className="pi-kpi" key={title}>
           <span>{title}</span>
           <strong>{value}</strong>
@@ -400,7 +402,7 @@ export function ProcurementHistory({
               <tr key={n}>
                 <td>{i.name}</td>
                 <td>
-                  {i.quantity} {i.unit}
+                  {formatQuantity(i.quantity, i.unit)}
                 </td>
                 <td>{money(i.buyPrice)}</td>
                 <td>{money(i.lineCost)}</td>
@@ -727,8 +729,7 @@ export function ProcurementAnalytics({
       {data && (
         <>
           <p className="pi-muted">
-            {data.from} — {data.to} · {data.totalItemsProcured.dona} dona ·{' '}
-            {data.totalItemsProcured.kg} kg
+            {data.from} — {data.to} · <QuantityStack quantities={data.totalItemsProcured} />
           </p>
           <div className="pi-kpis">
             {[
@@ -811,7 +812,7 @@ export function ProcurementAnalytics({
                   <tr key={p.productId + ':' + p.unit}>
                     <td>{p.name}</td>
                     <td>
-                      {p.quantity} {p.unit}
+                      {formatQuantity(p.quantity, p.unit)}
                     </td>
                     <td>{money(p.totalCost)}</td>
                     <td>{money(p.averageBuyPrice)}</td>

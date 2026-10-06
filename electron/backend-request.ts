@@ -6,7 +6,7 @@ export async function requestBackend(input:any,isDev:boolean) {
   const method=String(input.method??'GET').toUpperCase()
   if(!['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'].includes(method)) throw Error('Method is not allowed')
   const headers=new Headers()
-  const allowed=new Set(['authorization','content-type','accept','idempotency-key','x-account-id','x-client-protocol'])
+  const allowed=new Set(['authorization','content-type','accept','accept-language','idempotency-key','x-account-id','x-client-protocol'])
   for(const [key,value] of Object.entries(input.headers??{})) if(allowed.has(key.toLowerCase())&&typeof value==='string') headers.set(key,value)
   let body:BodyInit|undefined
   if(input.multipart) {

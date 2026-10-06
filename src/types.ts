@@ -114,6 +114,7 @@ export interface InventoryWithProduct extends InventoryItem {
 }
 
 export interface InventorySummary {
+  quantities?: import('./utils/quantities').InventoryQuantities
   totalStart: number
   totalCurrent: number
   totalSold: number
@@ -242,6 +243,7 @@ export interface SyncRejectedItem {
   entity: string
   localId: string
   reason: string
+  message?: string
 }
 
 export interface SyncResponse {
