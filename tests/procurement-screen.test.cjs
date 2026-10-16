@@ -39,6 +39,7 @@ function screen({
   saved = { items: [] },
   catalogFails = false,
   historyFails = false,
+  scope = "full",
   storageFails = false,
 } = {}) {
   let storage = copy(saved),
@@ -53,7 +54,7 @@ function screen({
   let cursor = 0,
     dirty = false,
     tree;
-  const auth = { user: { _id: 'owner', id: 'owner' }, token: 'session' };
+  const auth = { user: { _id: 'owner', id: 'owner', scope }, token: 'session' };
   function memo(work, deps) {
     const index = cursor++,
       old = memos[index];
@@ -408,7 +409,7 @@ test('failed local persistence never sends a procurement and leaves the cart edi
   ui.unmount();
 });
 test('history failure does not hide a successfully loaded catalog or claim empty history', async () => {
-  const ui = screen({ historyFails: true });
+  const ui = screen({ historyFails: true, scope: 'procurement' });
   await ui.settle();
   await ui.chooseExisting();
   assert.match(ui.text(), /Olma Golden/);
@@ -445,4 +446,14 @@ test('Kirimlar omits the supplier and scanner section while keeping the existing
   assert.equal(ui.submissions.length, 1);
   assert.equal(ui.submissions[0].items[0].name, line.name);
   ui.unmount();
+});
+
+
+test('full store account opens receipt history through statistics while procurement operators retain history access', async () => {
+  const full = screen(); await full.settle();
+  assert.equal(full.find(n => n.type === 'ProcurementHistory').length, 0);
+  full.unmount();
+  const operator = screen({ scope: 'procurement' }); await operator.settle();
+  assert.equal(operator.find(n => n.type === 'ProcurementHistory').length, 1);
+  operator.unmount();
 });

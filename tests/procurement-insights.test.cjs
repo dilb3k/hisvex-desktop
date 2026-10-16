@@ -184,10 +184,11 @@ function mount(component, props = {}, scope = 'full', initialMode = 'ok') {
       if (name === '../store') return { useStore: store }
       if (name.endsWith('/api') || name.endsWith('/api/client'))
         return {
-          procurementApi: { analytics, summary, list },
+          procurementApi: { analytics, summary, list, products: async () => [] },
           apiClient: {
             getToken: () => auth.token,
             getProcurementAnalytics: analytics,
+            getProcurementCatalog: async () => ({ products: [], offline: false, cachedAt: '' }),
             getProcurementSummary: summary,
             listProcurements: list,
           },
@@ -370,3 +371,36 @@ test('USB or camera scanner selects the matching catalog product and leaves the 
   assert.equal(ui.calls.length, 0)
   ui.unmount()
 })
+
+
+test('receipt history follows the selected analytics date range and supplier', async () => {
+  const ui = mount('ProcurementHistory', { initial: [], products: [], error: '', loading: false,
+    range: { from: '2026-10-01', to: '2026-10-03', supplier: 'Chorsu' } });
+  await ui.settle();
+  const query = ui.calls.filter(c => c.kind === 'list').at(-1).query;
+  assert.equal(query.from, '2026-10-01');
+  assert.equal(query.to, '2026-10-03');
+  assert.equal(query.supplier, 'Chorsu');
+  assert.equal(query.page, 1);
+  ui.unmount();
+});
+
+test('analytics shares server-resolved period bounds with receipt history', async () => {
+  let selected;
+  const ui = mount('ProcurementAnalytics', { from: '2026-10-01', to: '2026-10-03', onRangeChange: value => { selected = value; } });
+  await ui.settle();
+  assert.equal(selected.from, '2026-10-01');
+  assert.equal(selected.to, '2026-10-03');
+  assert.equal(selected.supplier, '');
+  ui.unmount();
+});
+
+
+test('free-account reports keep editable receipt date filters when finance analytics is unavailable', async () => {
+  const ui = mount('ProcurementReports', { from: '2026-10-01', to: '2026-10-03' });
+  ui.setUser({ tier: 'tekin', isPayed: false }); ui.render(); await ui.settle();
+  const history = ui.find(n => n.type === 'ProcurementHistory' || n.type?.name === 'ProcurementHistory')[0];
+  assert.ok(history);
+  assert.equal(history.props.range, undefined);
+  ui.unmount();
+});

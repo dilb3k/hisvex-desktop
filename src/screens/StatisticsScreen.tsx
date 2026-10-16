@@ -1,4 +1,5 @@
 import { QuantityStack } from '../components/QuantityStack'
+import { ProcurementReports } from './ProcurementInsights'
 import { getInventoryQuantities, type InventoryQuantities } from '../utils/quantities'
 import { statisticsReportCsv } from "../utils/statisticsReport";
 import { useEffect, useRef, useState, useMemo, useCallback, forwardRef } from 'react'
@@ -536,6 +537,7 @@ function StatisticsLocked() {
 }
 
 export function StatisticsScreen() {
+  const [section, setSection] = useState<'statistics' | 'receipts'>('statistics')
   const [period, setPeriod] = useState<Period>('daily')
   const [selectedDate, setSelectedDate] = useState(getBusinessDate)
   const [inventoryItems, setInventoryItems] = useState<any[]>([])
@@ -844,10 +846,18 @@ export function StatisticsScreen() {
 
   const negativeNetProfit = totals.profit < 0
 
-  if (isLocked) return <StatisticsLocked />
+
+  const sectionTabs = <div role="group" aria-label="Statistika bo‘limlari" style={{ display: 'flex', gap: 6, padding: 4, marginBottom: 18, borderRadius: 14, border: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
+    {(['statistics', 'receipts'] as const).map(value => <button key={value} type="button" aria-pressed={section === value} onClick={() => setSection(value)} style={{ flex: 1, minHeight: 44, padding: '10px 12px', border: 0, borderRadius: 10, fontWeight: 700, cursor: 'pointer', color: section === value ? '#fff' : 'var(--color-text-secondary)', background: section === value ? 'var(--color-primary)' : 'transparent' }}>{value === 'statistics' ? t('statistics') : 'Kirimlar tarixi'}</button>)}
+  </div>
+
+  if (section === 'receipts') return <div style={s.container}>{sectionTabs}<ProcurementReports {...getPeriodRange(period, selectedDate)} /></div>
+
+  if (isLocked) return <div style={s.container}>{sectionTabs}<StatisticsLocked /></div>
 
   return (
     <div style={s.container}>
+      {sectionTabs}
       {/* Page header */}
       <div style={s.pageHeader}>
         <div>

@@ -102,16 +102,18 @@ export function formatTruncatedDecimal(value: number, digits = 2): string {
 
 /** Money editing preserves a weighed line's tiyin instead of turning 254.3 into 2543. */
 export function formatInputMoney(value: string): string {
-  const cleaned = value.replace(/,/g, '.').replace(/[^\d.]/g, '')
+  const cleaned = value.replace(/[^\d.]/g, '')
   const [whole, ...fraction] = cleaned.split('.')
   if (!whole && !fraction.length) return ''
-  const number = Number(whole || '0')
-  const grouped = Number.isFinite(number) ? number.toLocaleString('uz-UZ', { maximumFractionDigits: 0 }) : '0'
+  // Canonical editing syntax on every device: commas group thousands,
+  // a dot separates tiyin. Never reinterpret a grouping comma as a decimal.
+  const integer = (whole || '0').replace(/^0+(?=\d)/, '')
+  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
   return fraction.length ? `${grouped}.${fraction.join('').slice(0, 2)}` : grouped
 }
 
 export function parseInputMoney(value: string): number {
-  const normalized = formatInputMoney(value).replace(/\s/g, '')
+  const normalized = formatInputMoney(value).replace(/[,\s]/g, '')
   const number = Number(normalized)
   return Number.isFinite(number) ? number : 0
 }

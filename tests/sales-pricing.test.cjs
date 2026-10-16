@@ -131,3 +131,28 @@ test('download opens a report choice and receipts export matches the selected da
   assert.equal(h.sent[0].format,web?'xlsx':'csv');assert.equal(h.saved.length,1);
   assert.equal(h.all().find(n=>n.type==='ReportDownloadDialog').props.visible,false);
 });
+
+
+test('statistics defaults to sales and switching to receipts replaces the statistics body', async () => {
+  const h = harness({ screen: 'statistics' }); h.render(); await h.settle();
+  const tabs = () => h.all().filter(n => n.type === 'button' && typeof n.props['aria-pressed'] === 'boolean');
+  assert.equal(tabs().length, 2);
+  assert.equal(tabs()[0].props['aria-pressed'], true);
+  assert.equal(h.all().some(n => n.type === 'ProcurementReports'), false);
+  tabs()[1].props.onClick(); h.render();
+  assert.equal(tabs()[1].props['aria-pressed'], true);
+  assert.equal(h.all().filter(n => n.type === 'ProcurementReports').length, 1);
+  assert.equal(h.all().some(n => n.type === 'ReportDownloadDialog'), false);
+  tabs()[0].props.onClick(); h.render();
+  assert.equal(h.all().some(n => n.type === 'ProcurementReports'), false);
+  assert.equal(h.all().some(n => n.type === 'ReportDownloadDialog'), true);
+});
+
+
+test('free accounts can still open confirmed receipt history without unlocking sales statistics', async () => {
+  const h = harness({ screen: 'statistics', tier: 'tekin' }); h.render(); await h.settle();
+  const receiptTab = h.all().find(n => n.type === 'button' && n.props['aria-pressed'] === false);
+  assert.ok(receiptTab);
+  receiptTab.props.onClick(); h.render();
+  assert.equal(h.all().filter(n => n.type === 'ProcurementReports').length, 1);
+});

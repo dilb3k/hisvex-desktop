@@ -53,7 +53,7 @@ test('money display and editing preserve a weighed amount instead of stripping i
   const { formatDecimal, formatInputMoney, parseInputMoney } = quantities;
   assert.equal(formatDecimal(254.29999999999998, 2), '254.3');
   assert.equal(parseInputMoney(formatInputMoney('254.3')), 254.3);
-  assert.equal(parseInputMoney(formatInputMoney('1254,30')), 1254.3);
+  assert.equal(parseInputMoney(formatInputMoney('1,254.30')), 1254.3);
   assert.equal(parseInputMoney(formatInputMoney('0.01')), 0.01);
   assert.equal(parseInputMoney(''), 0);
   assert.equal(formatInputMoney('1.'), '1.');
@@ -113,4 +113,32 @@ test('chart buckets retain separate dona/kg values and rounded fractional revenu
     : loadSource('src/utils/statsBuckets.ts').buildDayBuckets(rows,['2026-10-04'],'2026-10-04')[0];
   assert.deepEqual(plain(bucket.quantities),{dona:3,kg:0.3});
   assert.equal(bucket.revenue,300.3);
+});
+
+
+test('money input preserves thousands through typing, editing and repeated formatting on every locale', () => {
+  const { formatInputMoney: format, parseInputMoney: parse } = quantities;
+  const original = Number.prototype.toLocaleString;
+  try {
+    Number.prototype.toLocaleString = function () { return new Intl.NumberFormat('en-US').format(this.valueOf()); };
+    let typed = '';
+    for (const digit of '5000') typed = format(typed + digit);
+    assert.equal(typed, '5,000');
+    assert.equal(parse(typed), 5000);
+    for (const amount of [5000, 10000, 50000, 1000000, 5000.25, 0.01]) {
+      let value = String(amount);
+      for (let i = 0; i < 5; i++) value = format(value);
+      assert.equal(parse(value), amount);
+    }
+    assert.equal(parse(format('5,0000')), 50000);
+    assert.equal(parse(format('5\u00a0000.25')), 5000.25);
+    assert.equal(parse(format('5\u202f000.25')), 5000.25);
+    assert.equal(format('0005000'), '5,000');
+    assert.equal(parse(format('5,000'.slice(0, -1))), 500);
+    assert.equal(format('5,0000'), '50,000');
+    assert.equal(format('5000.25'), '5,000.25');
+    assert.equal(parse('5,000'), 5000);
+    assert.equal(parse('1,000,000'), 1000000);
+    assert.equal(format('0.'), '0.');
+  } finally { Number.prototype.toLocaleString = original; }
 });

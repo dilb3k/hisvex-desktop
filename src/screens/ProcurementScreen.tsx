@@ -844,12 +844,12 @@ export function ProcurementScreen({
               </div>
             </aside>
           </div>
-          <ProcurementHistory
+          {user?.scope === 'procurement' && <ProcurementHistory
             initial={history}
             products={products}
             error={historyError}
             loading={loading}
-          />
+          />}
           {!!items.length && (
             <div className="pi-dock">
               <div>

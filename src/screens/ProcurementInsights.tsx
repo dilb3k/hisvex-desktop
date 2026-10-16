@@ -313,7 +313,9 @@ export function ProcurementHistory({
   products,
   error: initialError,
   loading,
+  range,
 }: {
+  range?: { from: string; to: string; supplier: string }
   initial: ProcurementReceipt[]
   products: Product[]
   error: string
@@ -337,6 +339,15 @@ export function ProcurementHistory({
       product: '',
     }),
     [revision, setRevision] = useState(0)
+  useEffect(() => {
+    if (!range) return;
+    setFrom(range.from);
+    setTo(range.to);
+    setSupplier(range.supplier);
+    setProduct('');
+    setPage(1);
+    setQuery({ ...range, product: '' });
+  }, [range]);
   useEffect(() => {
     setRows(initial)
     setOpen('')
@@ -418,8 +429,9 @@ export function ProcurementHistory({
     <section className="pi-section" aria-label="Kirimlar tarixi">
       <h2>Kirimlar tarixi</h2>
       <p className="pi-muted">
-        Server tasdiqlagan partiyalar · tarkibini ko‘rish uchun oching
+        Tasdiqlangan kirimlar. Sana, yetkazib beruvchi yoki mahsulot bo‘yicha qidiring; tarkibini ko‘rish uchun kirimni oching.
       </p>
+      {range && <p className="pi-muted">{range.from} — {range.to} · {range.supplier || 'Barcha yetkazib beruvchilar'}. Davr yuqoridagi filtrga mos.</p>}
       <form
         className="pi-filters"
         onSubmit={(e) => {
@@ -429,6 +441,7 @@ export function ProcurementHistory({
           setRevision((v) => v + 1)
         }}
       >
+        {!range && <>
         <label>
           Boshlanish
           <input
@@ -455,6 +468,7 @@ export function ProcurementHistory({
             placeholder="Aniq nomi"
           />
         </label>
+        </>}
         <label>
           Mahsulot
           <select value={product} onChange={(e) => setProduct(e.target.value)}>
@@ -549,9 +563,11 @@ export function ProcurementAnalytics({
   from,
   to,
   refreshKey,
+  onRangeChange,
 }: {
   from: string
   to: string
+  onRangeChange?: (range: { from: string; to: string; supplier: string }) => void
   refreshKey?: unknown
 }) {
   const user = useAuthStore((s) => s.user),
@@ -587,7 +603,7 @@ export function ProcurementAnalytics({
     procurementApi
       .analytics(query)
       .then((v) => {
-        if (alive) setData(v)
+        if (alive) { setData(v); onRangeChange?.({ from: v.from, to: v.to, supplier: query.supplier ?? '' }); }
       })
       .catch(() => {
         if (alive)
@@ -601,7 +617,7 @@ export function ProcurementAnalytics({
     return () => {
       alive = false
     }
-  }, [query, refreshKey, identity, allowed, revision])
+  }, [query, refreshKey, identity, allowed, revision, onRangeChange])
   const download = async (format: 'csv' | 'xlsx' | 'pdf') => {
     if (exporting || !data) return
     setExporting(format)
@@ -634,11 +650,11 @@ export function ProcurementAnalytics({
   return (
     <section
       className="pi-section pi-analytics"
-      aria-label="Ta’minot va Kirimlar Tahlili"
+      aria-label="Kirimlar statistikasi"
     >
       <div className="pi-heading">
         <div>
-          <h2>Ta’minot va Kirimlar Tahlili</h2>
+          <h2>Kirimlar statistikasi</h2>
           <p className="pi-muted">Savdo, xarid va qoldiq tannarxi bir joyda</p>
         </div>
         <div className="pi-actions">
@@ -843,4 +859,28 @@ export function ProcurementAnalytics({
       )}
     </section>
   )
+}
+
+const EMPTY_RECEIPTS: ProcurementReceipt[] = []
+export function ProcurementReports({ from, to }: { from: string; to: string }) {
+  const identity = useAuthStore(s => s.token)
+  const user = useAuthStore(s => s.user)
+  const canAnalyze = !!user && user.scope !== 'procurement' && user.tier !== 'tekin'
+  const [range, setRange] = useState({ from, to, supplier: '' });
+  const [products, setProducts] = useState<Product[]>([])
+  const [error, setError] = useState('')
+  const [revision, setRevision] = useState(0)
+  useEffect(() => {
+    let alive = true
+    setProducts([])
+    setError('')
+    procurementApi.products().then(value => { if (alive) setProducts(value) })
+      .catch(() => { if (alive) setError('Mahsulot filtri yuklanmadi. Qayta urinib ko‘ring.') })
+    return () => { alive = false }
+  }, [identity, revision])
+  return <>
+    <ProcurementAnalytics from={from} to={to} onRangeChange={setRange} />
+    {!!error && <p role="alert" className="pi-error">{error} <button className="pi-button" onClick={() => setRevision(v => v + 1)}>Qayta urinish</button></p>}
+    <ProcurementHistory key={identity} initial={EMPTY_RECEIPTS} range={canAnalyze ? range : undefined} products={products} error="" loading={false} />
+  </>
 }
