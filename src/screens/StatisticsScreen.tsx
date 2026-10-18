@@ -1,5 +1,5 @@
 import { QuantityStack } from '../components/QuantityStack'
-import { ProcurementReports } from './ProcurementInsights'
+import { ProcurementReports } from './ProcurementReports'
 import { getInventoryQuantities, type InventoryQuantities } from '../utils/quantities'
 import { statisticsReportCsv } from "../utils/statisticsReport";
 import { useEffect, useRef, useState, useMemo, useCallback, forwardRef } from 'react'

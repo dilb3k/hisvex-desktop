@@ -27,7 +27,7 @@ test('all sensitive IPC handlers reject a remote frame and child frames; encrypt
  const ipc=load('electron/ipc.ts',{'electron':electron,'./trust':trust,'./backend-request':{requestBackend:async()=>({})}})
  ipc.initIpcHandlers({handle:(name,fn)=>handlers.set(name,fn)},{get:(key,fallback)=>storage.get(key)??fallback,set:(key,value)=>storage.set(key,value)})
  const frame={url:local},event={senderFrame:frame,sender:{mainFrame:frame}}
- for(const name of ['store:getToken','store:setToken','safeStorage:decrypt','file:saveCsv','api:request']) {
+ for(const name of ['store:getToken','store:setToken','safeStorage:decrypt','file:saveCsv','file:saveXlsx','api:request']) {
    assert.throws(()=>handlers.get(name)({...event,senderFrame:{url:'https://attacker.test'}},'test'),/Untrusted/)
    assert.throws(()=>handlers.get(name)({...event,senderFrame:{url:local}},'test'),/Untrusted/)
  }
@@ -75,3 +75,19 @@ test('CSV formula strings, leading controls, quotes and numeric losses are expor
  for(const text of ['=1+1','+SUM(A1)','-2+1','@HYPERLINK("x")',' \t=1','\r=1']) assert.ok(escapeCsvCell(text).startsWith('"\''))
  assert.equal(escapeCsvCell(-12.5),'"-12.5"');assert.equal(escapeCsvCell('a,"b"'),'"a,""b"""')
 })
+
+
+test('Excel save dialog preserves exact binary bytes, handles cancellation, and rejects paths and oversized files', async () => {
+  const handlers = new Map(), writes = []; let cancelled = false, dialogs = 0;
+  const electron = { app: { isPackaged: true }, BrowserWindow: { fromWebContents: () => null }, safeStorage: {}, nativeTheme: {}, shell: {},
+    dialog: { showSaveDialog: async options => { dialogs++; assert.equal(options.filters[0].extensions[0], 'xlsx'); return { canceled: cancelled, filePath: '/chosen/report.xlsx' }; } } };
+  const ipc = load('electron/ipc.ts', { electron, './trust': trust, './backend-request': {}, 'node:fs': { promises: { writeFile: async (file, bytes) => writes.push({ file, bytes: Array.from(bytes) }) } } });
+  ipc.initIpcHandlers({ handle: (name, fn) => handlers.set(name, fn) }, { get() {}, set() {} });
+  const frame = { url: local }, event = { senderFrame: frame, sender: { mainFrame: frame } };
+  const save = handlers.get('file:saveXlsx'), filename = 'kirimlar-2026-10-01-2026-10-18.xlsx', bytes = new Uint8Array([80, 75, 3, 4, 255, 0, 128]);
+  const result = await save(event, filename, bytes);
+  assert.equal(result.saved, true); assert.equal(writes.length, 1); assert.deepEqual(writes[0], { file: '/chosen/report.xlsx', bytes: [80, 75, 3, 4, 255, 0, 128] });
+  cancelled = true; assert.equal((await save(event, filename, bytes)).saved, false); assert.equal(writes.length, 1);
+  for (const [name, content] of [['../../overwrite.xlsx', bytes], [filename, 'text'], [filename, new Uint8Array(32 * 1024 * 1024 + 1)], [filename, new Uint8Array([0, 0, 0, 0])]]) await assert.rejects(save(event, name, content));
+  assert.equal(dialogs, 2); assert.equal(writes.length, 1);
+});

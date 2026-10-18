@@ -32,6 +32,7 @@ interface ElectronAPI {
   onMaximizeChange: (callback: (maximized: boolean) => void) => () => void
   isMaximized: () => Promise<boolean>
   isWindows: () => boolean
+  saveXlsx: (defaultName: string, content: Uint8Array) => Promise<{ saved: true; filePath: string } | { saved: false }>
   saveCsv: (defaultName: string, content: string) => Promise<{ saved: true; filePath: string } | { saved: false }>
   openExternal: (url: string) => Promise<boolean>
   safeStorageEncrypt: (plaintext: string) => Promise<string>

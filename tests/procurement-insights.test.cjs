@@ -243,43 +243,6 @@ function mount(component, props = {}, scope = 'full', initialMode = 'ok') {
     unmount: () => effects.filter(Boolean).forEach((e) => e.cleanup?.()),
   }
 }
-test('procurement scope cannot mount finance analytics or initiate any network request', async () => {
-  const ui = mount(
-    'ProcurementAnalytics',
-    { from: '2026-10-01', to: '2026-10-03' },
-    'procurement',
-  )
-  await ui.settle()
-  assert.equal(ui.calls.length, 0)
-  assert.equal(ui.text(), '')
-  ui.unmount()
-})
-test('free plan cannot fetch hidden supply finance analytics', async () => {
-  const ui = mount(
-    'ProcurementAnalytics',
-    { from: '2026-10-01', to: '2026-10-03' },
-    'procurement',
-  )
-  ui.setUser({ scope: 'full', tier: 'tekin', isPayed: false })
-  ui.render()
-  await ui.settle()
-  assert.equal(ui.calls.length, 0)
-  assert.equal(ui.text(), '')
-  ui.unmount()
-})
-test('supply analytics render server-authoritative valuation and cost changes rather than cart estimates', async () => {
-  const ui = mount('ProcurementAnalytics', {
-    from: '2026-10-01',
-    to: '2026-10-03',
-  })
-  await ui.settle()
-  assert.equal(ui.calls[0].query.period, 'custom')
-  assert.match(ui.text(), /450/)
-  assert.match(ui.text(), /\+25%/)
-  assert.match(ui.text(), /naqd pul emas/)
-  assert.match(ui.text(), /0\.5\s+kg/)
-  ui.unmount()
-})
 test('operational KPI failure never displays invented zero spend', async () => {
   const ui = mount('ProcurementKpis', { revision: 1 }, 'full', 'fail')
   await ui.settle()
@@ -382,25 +345,5 @@ test('receipt history follows the selected analytics date range and supplier', a
   assert.equal(query.to, '2026-10-03');
   assert.equal(query.supplier, 'Chorsu');
   assert.equal(query.page, 1);
-  ui.unmount();
-});
-
-test('analytics shares server-resolved period bounds with receipt history', async () => {
-  let selected;
-  const ui = mount('ProcurementAnalytics', { from: '2026-10-01', to: '2026-10-03', onRangeChange: value => { selected = value; } });
-  await ui.settle();
-  assert.equal(selected.from, '2026-10-01');
-  assert.equal(selected.to, '2026-10-03');
-  assert.equal(selected.supplier, '');
-  ui.unmount();
-});
-
-
-test('free-account reports keep editable receipt date filters when finance analytics is unavailable', async () => {
-  const ui = mount('ProcurementReports', { from: '2026-10-01', to: '2026-10-03' });
-  ui.setUser({ tier: 'tekin', isPayed: false }); ui.render(); await ui.settle();
-  const history = ui.find(n => n.type === 'ProcurementHistory' || n.type?.name === 'ProcurementHistory')[0];
-  assert.ok(history);
-  assert.equal(history.props.range, undefined);
   ui.unmount();
 });

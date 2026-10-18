@@ -48,6 +48,8 @@ const electronAPI = {
   },
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
   isWindows: () => process.platform === 'win32',
+  saveXlsx: (defaultName: string, content: Uint8Array) =>
+    ipcRenderer.invoke('file:saveXlsx', defaultName, content) as Promise<{ saved: true; filePath: string } | { saved: false }>,
   saveCsv: (defaultName: string, content: string) =>
     ipcRenderer.invoke('file:saveCsv', defaultName, content) as Promise<
       { saved: true; filePath: string } | { saved: false }

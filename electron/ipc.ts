@@ -224,6 +224,18 @@ export function initIpcHandlers(ipcMain: IpcMain, store: Store): void {
     return true
   })
 
+  handle('file:saveXlsx', async (event, defaultName: string, content: Uint8Array) => {
+    if (typeof defaultName !== 'string' || !/^kirimlar-\d{4}-\d{2}-\d{2}-\d{4}-\d{2}-\d{2}\.xlsx$/.test(defaultName)
+      || !(content instanceof Uint8Array) || content.byteLength < 4 || content.byteLength > 32 * 1024 * 1024
+      || content[0] !== 0x50 || content[1] !== 0x4b) throw Error('Hisobot fayli noto‘g‘ri yoki juda katta')
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const options = { defaultPath: defaultName, filters: [{ name: 'Excel', extensions: ['xlsx'] }] }
+    const { canceled, filePath } = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+    if (canceled || !filePath) return { saved: false as const }
+    await fs.promises.writeFile(filePath, content)
+    return { saved: true as const, filePath }
+  })
+
   handle('file:saveCsv', async (event, defaultName: string, content: string) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const dialogOpts = { defaultPath: defaultName, filters: [{ name: 'CSV', extensions: ['csv'] }] }
