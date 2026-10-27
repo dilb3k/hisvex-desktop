@@ -12,7 +12,7 @@ export function allowedBackendUrl(value:string,isDev:boolean) {
   try {
     const url=new URL(value)
     if(url.username||url.password||!url.pathname.startsWith('/api/')) return false
-    const origins=['https://hisvex-api-production.up.railway.app','https://hisvex-api.onrender.com']
+    const origins=['https://hisvex-api-production.up.railway.app','https://comp-bar-server-bk7z.onrender.com']
     if(isDev) origins.push('http://localhost:4000','http://localhost:5000','http://127.0.0.1:4000','http://127.0.0.1:5000')
     return origins.includes(url.origin)
   } catch {return false}

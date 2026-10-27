@@ -16,9 +16,9 @@ test('IPC trust accepts only the packaged renderer or explicit dev origin',()=>{
 test('native backend transport cannot be used as arbitrary fetch or redirected SSRF',async()=>{
  let calls=0,seen
  const backend=load('electron/backend-request.ts',{'./trust':trust},{fetch:async(url,config)=>{calls++;seen=config;return new Response('{"ok":true}',{headers:{'Content-Type':'application/json'}})}})
- for(const url of ['file:///etc/passwd','https://attacker.test/api/x','https://hisvex-api.onrender.com@attacker.test/api/x','https://hisvex-api.onrender.com/not-api','http://localhost:5000/api/x']) await assert.rejects(backend.requestBackend({url},false))
+ for(const url of ['file:///etc/passwd','https://attacker.test/api/x','https://comp-bar-server-bk7z.onrender.com@attacker.test/api/x','https://comp-bar-server-bk7z.onrender.com/not-api','http://localhost:5000/api/x']) await assert.rejects(backend.requestBackend({url},false))
  assert.equal(calls,0)
- const result=await backend.requestBackend({url:'https://hisvex-api.onrender.com/api/health',headers:{Origin:'null',Authorization:'Bearer test','Accept-Language':'ru'},timeout:10000},false)
+ const result=await backend.requestBackend({url:'https://comp-bar-server-bk7z.onrender.com/api/health',headers:{Origin:'null',Authorization:'Bearer test','Accept-Language':'ru'},timeout:10000},false)
  assert.equal(result.status,200);assert.equal(seen.redirect,'error');assert.equal(seen.headers.has('Origin'),false);assert.equal(seen.headers.get('Authorization'),'Bearer test');assert.equal(seen.headers.get('Accept-Language'),'ru')
 })
 test('all sensitive IPC handlers reject a remote frame and child frames; encryption failure writes nothing',async()=>{
@@ -63,7 +63,7 @@ test('a second Desktop process never opens shared storage and instead restores t
 test('native Axios adapter preserves multipart, HTTP conflicts and timeout classification',async()=>{
  const axios=require('axios');let request;let result={status:200,statusText:'OK',headers:{'content-type':'application/json'},data:'{"ok":true}'}
  const {nativeBackendAdapter}=load('src/api/nativeAdapter.ts',{}, {window:{electronAPI:{requestBackend:async r=>{request=r;return result}}}})
- const api=axios.create({baseURL:'https://hisvex-api.onrender.com/api',adapter:nativeBackendAdapter})
+ const api=axios.create({baseURL:'https://comp-bar-server-bk7z.onrender.com/api',adapter:nativeBackendAdapter})
  assert.equal((await api.get('/health',{params:{a:'x y'}})).data.ok,true);assert.match(request.url,/a=x\+y/)
  const form=new FormData();form.append('image',new Blob(['image'],{type:'image/png'}),'photo.png');await api.post('/products/p/image',form)
  assert.equal(request.multipart[0].filename,'photo.png');assert.equal(request.multipart[0].bytes.length,5)

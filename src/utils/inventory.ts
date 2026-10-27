@@ -222,7 +222,7 @@ export const getInventoryTotals = (items: (InventoryItem & { product?: Product }
 
   for (const item of items) {
     const metrics = getInventoryMetrics(item)
-    totalStart += item.startQuantity ?? item.openingQuantity ?? 0
+    totalStart += (item.startQuantity ?? item.openingQuantity ?? 0) + (item.lockedSold ?? 0)
     totalCurrent += metrics.remaining
     totalSold += metrics.sold
     totalRevenue += metrics.revenue

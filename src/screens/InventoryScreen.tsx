@@ -1,7 +1,8 @@
+import { inventoryAdjustment } from '../utils/inventoryAdjustment'
 import { QuantityStack } from '../components/QuantityStack'
 import { sumQuantities, formatInputMoney, parseInputMoney } from '../utils/quantities'
 import { syncNow } from '../store/syncEngine'
-import { useEffect, useState, useMemo, useCallback, forwardRef } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef, forwardRef } from 'react'
 import { inventoryApi, getProductImageSrc, clearApiCache, getDeviceId } from '../api/client'
 import { useAppStore } from '../store/appStore'
 import { useAuthStore } from '../store/authStore'
@@ -40,6 +41,7 @@ interface EnrichedItem {
   product: Product
   inv: InventoryItem | undefined
   unit: ProductUnit
+  maxCurrent: number
   opening: number
   current: number
   remaining: number
@@ -226,23 +228,28 @@ export function InventoryScreen() {
   const isEditable = !isPastDate && !isFutureDate
   const refreshKey = useAppStore((s) => s.refreshKey)
 
+  const inventoryRequest = useRef(0)
   const fetchData = useCallback(async () => {
+    const request = ++inventoryRequest.current
     if (isFutureDate) { setItems([]); setLoading(false); return }
     setLoading(true)
     setFetchError(false)
     try {
       const { data } = await inventoryApi.getByDate(selectedDate, selectedDate)
+      if (request !== inventoryRequest.current) return
       setItems(data?.items ?? [])
     } catch {
+      if (request !== inventoryRequest.current) return
       setItems([])
       setFetchError(true)
     } finally {
-      setLoading(false)
+      if (request === inventoryRequest.current) setLoading(false)
     }
   }, [selectedDate, isFutureDate])
 
   useEffect(() => {
     fetchData()
+    return () => { inventoryRequest.current++ }
   }, [fetchData, refreshKey])
 
   const combinedData = useMemo(() => {
@@ -253,17 +260,17 @@ export function InventoryScreen() {
       const sellPrice = resolveSellPrice(item, product)
       const buyPrice = resolveBuyPrice(item, product)
       const unit = normalizeUnit(item.unit ?? product.unit)
-      const opening = roundQty(item.startQuantity ?? item.openingQuantity ?? 0)
+      const maxCurrent = roundQty(item.startQuantity ?? item.openingQuantity ?? 0)
+      const opening = roundQty(maxCurrent + (item.lockedSold ?? 0))
       const current = roundQty(item.currentQuantity ?? 0)
       const remaining = roundQty(Math.max(current, 0))
-      const sold = item.sold ?? roundQty(Math.max(opening - current, 0))
-      const revenue = item.revenue ?? (sold * sellPrice)
-      const realizedProfit = item.realizedProfit ?? (sold * (sellPrice - buyPrice))
+      const metrics = inventoryAdjustment({ ...item, sellPrice, buyPrice }, current)
+      const { sold, revenue, realizedProfit } = metrics
       const stockSellValue = remaining * sellPrice
       const unitProfit = sellPrice - buyPrice
       result.push({
         product: product as Product, inv: item,
-        unit, opening, current, remaining, sold, revenue, realizedProfit,
+        unit, opening, maxCurrent, current, remaining, sold, revenue, realizedProfit,
         stockSellValue, unitProfit, sellPrice, buyPrice,
       })
     }
@@ -327,21 +334,7 @@ export function InventoryScreen() {
   const applyQuantityLocally = useCallback((productId: string, newQty: number, statedRevenue?: number) => {
     setItems((prev) => prev.map((item) => {
       if (item.productId !== productId && item.product?._id !== productId) return item
-      const opening = item.startQuantity ?? item.openingQuantity ?? 0
-      const safeQty = clampCurrentQuantity(newQty, opening)
-      const newSold = roundQty(Math.max(opening - safeQty, 0))
-      const sp = resolveSellPrice(item, item.product)
-      const bp = resolveBuyPrice(item, item.product)
-      // A stated revenue is authoritative; profit is never entered, it is
-      // always revenue minus the cost of the units sold.
-      const revenue = statedRevenue ?? roundMoney(newSold * sp)
-      return {
-        ...item,
-        currentQuantity: safeQty,
-        sold: newSold,
-        revenue,
-        realizedProfit: roundMoney(revenue - newSold * bp),
-      }
+      return { ...item, ...inventoryAdjustment({ ...item, sellPrice: resolveSellPrice(item, item.product), buyPrice: resolveBuyPrice(item, item.product) }, newQty, statedRevenue) }
     }))
   }, [])
 
@@ -351,19 +344,19 @@ export function InventoryScreen() {
   // before save is ever attempted — mirrors mobile's
   // `cannotAddMoreThanSold` validation.
   const rawQtyInput = selectedEntry ? parseQuantityInput(currentQtyInput, selectedEntry.unit) : 0
-  const isOverCount = !!selectedEntry && isEditable && !isPastDate && rawQtyInput > selectedEntry.opening
+  const isOverCount = !!selectedEntry && isEditable && !isPastDate && rawQtyInput > selectedEntry.maxCurrent
 
   const execSave = async () => {
-    if (!selectedEntry || !isEditable) return
+    if (!selectedEntry || !isEditable || saving || !preview || preview.invalidRevenue || (preview.soldNow === 0 && !preview.isOverridden)) return
     if (getPendingProductIds().has(selectedEntry.inv?.productId ?? selectedEntry.product._id)) { showToast('Avvalgi amal tasdiqlanmagan. Tahrirdan oldin sinxronlang.', 'error'); return }
     const rawQty = parseQuantityInput(currentQtyInput, selectedEntry.unit)
     // Block save outright when the typed value exceeds the opening
     // quantity — the inline error is already visible; this is the actual
     // gate that prevents the request from ever going out.
-    if (rawQty > selectedEntry.opening) return
+    if (rawQty > selectedEntry.maxCurrent) return
     // Defensive clamp at the persist point itself (matches mobile exactly),
     // even though rawQty is already guaranteed in-range by the guard above.
-    const newQty = clampCurrentQuantity(rawQty, selectedEntry.opening)
+    const newQty = clampCurrentQuantity(rawQty, selectedEntry.maxCurrent)
     const statedRevenue = preview?.isOverridden ? preview.newRevenue : undefined
     setSaving(true)
     try {
@@ -419,25 +412,14 @@ export function InventoryScreen() {
   const preview = useMemo(() => {
     if (!selectedEntry || !isEditable || isOverCount) return null
     const newCurrent = parseQuantityInput(currentQtyInput, selectedEntry.unit)
-    const newSold = roundQty(Math.max(selectedEntry.opening - newCurrent, 0))
-    const listRevenue = roundMoney(newSold * selectedEntry.sellPrice)
-    // An overwritten revenue is authoritative. Profit is never editable — it
-    // is always revenue minus the cost of the units sold, so every so'm taken
-    // off the revenue comes straight off the profit.
-    const newRevenue = revenueInput === null ? listRevenue : roundMoney(parseInputMoney(revenueInput))
-    const newProfit = roundMoney(newRevenue - newSold * selectedEntry.buyPrice)
+    const input = { ...selectedEntry.inv, currentQuantity: selectedEntry.current, sellPrice: selectedEntry.sellPrice, buyPrice: selectedEntry.buyPrice }
+    const next = inventoryAdjustment(input, newCurrent, revenueInput === null ? undefined : parseInputMoney(revenueInput))
+    const { sold: newSold, revenue: newRevenue, realizedProfit: newProfit, listRevenue } = next
     return {
+      invalidRevenue: newSold === 0 && newRevenue > 0,
       prevSold: selectedEntry.sold,
       newSold,
-      // What THIS edit does, as opposed to the day totals around it.
-      //
-      // The maths was never wrong — remaining is always measured against the
-      // opening quantity, which is what makes a mid-day recount work at all —
-      // but the panel only ever showed the day totals. Typing 87 over a
-      // remaining of 88 put "19 sold" on screen when one single unit had just
-      // been sold, and 19 is the number that catches the eye. The delta is now
-      // stated outright so the two readings can't be confused.
-      soldNow: roundQty(newSold - selectedEntry.sold),
+      soldNow: next.soldNow,
       revenueNow: roundMoney(newRevenue - selectedEntry.revenue),
       profitNow: roundMoney(newProfit - selectedEntry.realizedProfit),
       listRevenue,
@@ -593,6 +575,7 @@ export function InventoryScreen() {
               )}
               {p && (
                 <div style={s.previewBox}>
+                  {p.invalidRevenue && <p role="alert" style={{ color: 'var(--color-danger)' }}>{t('revenueRequiresSales')}</p>}
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', marginBottom: 8 }}>{t('preSaveCheck')}</div>
 
                   {/* What this one edit does, stated first and on its own.
@@ -630,7 +613,7 @@ export function InventoryScreen() {
                     {t('dayTotals')}
                   </div>
                   <div style={s.fieldRow}><span style={s.fieldLabel}>{t('previousSold')}</span><span style={s.fieldValue}>{formatQuantity(p.prevSold, selectedEntry.unit)}</span></div>
-                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('newSold')}</span><span style={s.fieldValue}>{formatQuantity(p.newSold, selectedEntry.unit)}</span></div>
+                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('newSold')}</span><span style={s.fieldValue}>{formatQuantity(p.soldNow, selectedEntry.unit)}</span></div>
                   {/* Editable: the shop often takes a different amount than
                       the list price implies. Profit below is deliberately NOT
                       editable — it always follows from this field. */}
@@ -641,6 +624,7 @@ export function InventoryScreen() {
                         type="text"
                         inputMode="decimal"
                         aria-label={t('expectedRevenue')}
+                        aria-invalid={p.invalidRevenue}
                         value={revenueInput ?? formatInputMoney(String(p.listRevenue))}
                         onChange={(e) => setRevenueInput(formatInputMoney(e.target.value))}
                         onFocus={() => { if (revenueInput === null) setRevenueInput(formatInputMoney(String(p.listRevenue))) }}
@@ -679,7 +663,7 @@ export function InventoryScreen() {
             }}>{t('back')}</button>
             {!isPastDate && (
               <button
-                onClick={handleSave} disabled={saving || isOverCount}
+                onClick={handleSave} disabled={saving || isOverCount || !p || p.invalidRevenue || (p.soldNow === 0 && !p.isOverridden)}
                 style={{
                   padding: '10px 18px', borderRadius: 8, border: 'none',
                   background: 'var(--color-primary)', color: '#fff', fontSize: 14, fontWeight: 600,
