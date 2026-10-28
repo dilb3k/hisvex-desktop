@@ -27,3 +27,14 @@ export function inventoryAdjustment(entry: {
     soldNow: roundQty(entry.currentQuantity - currentQuantity),
   }
 }
+
+/** The editable amount belongs only to this new sale; earlier sales stay intact. */
+export function inventorySaleAdjustment(entry: Parameters<typeof inventoryAdjustment>[0], currentQuantity: number, saleRevenue?: number) {
+  const previous = inventoryAdjustment(entry, entry.currentQuantity)
+  const listed = inventoryAdjustment(entry, currentQuantity)
+  const listSaleRevenue = roundMoney(listed.revenue - previous.revenue)
+  const next = inventoryAdjustment(entry, currentQuantity,
+    listed.soldNow > 0 && saleRevenue !== undefined
+      ? roundMoney(previous.revenue + saleRevenue) : undefined)
+  return { ...next, listSaleRevenue, saleRevenue: roundMoney(next.revenue - previous.revenue) }
+}

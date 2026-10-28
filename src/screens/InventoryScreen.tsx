@@ -1,4 +1,4 @@
-import { inventoryAdjustment } from '../utils/inventoryAdjustment'
+import { inventoryAdjustment, inventorySaleAdjustment } from '../utils/inventoryAdjustment'
 import { QuantityStack } from '../components/QuantityStack'
 import { sumQuantities, formatInputMoney, parseInputMoney } from '../utils/quantities'
 import { syncNow } from '../store/syncEngine'
@@ -192,7 +192,7 @@ export function InventoryScreen() {
   const [items, setItems] = useState<InventoryItem[]>([])
   const [selectedEntry, setSelectedEntry] = useState<EnrichedItem | null>(null)
   const [currentQtyInput, setCurrentQtyInput] = useState('')
-  // Set only when the user overwrites the expected-revenue figure. Kept
+  // Set only when the user overwrites the amount for this new sale. Kept
   // separate from the computed one so clearing the field returns to "value
   // these units at the list price" instead of meaning "they brought in 0".
   const [revenueInput, setRevenueInput] = useState<string | null>(null)
@@ -413,7 +413,7 @@ export function InventoryScreen() {
     if (!selectedEntry || !isEditable || isOverCount) return null
     const newCurrent = parseQuantityInput(currentQtyInput, selectedEntry.unit)
     const input = { ...selectedEntry.inv, currentQuantity: selectedEntry.current, sellPrice: selectedEntry.sellPrice, buyPrice: selectedEntry.buyPrice }
-    const next = inventoryAdjustment(input, newCurrent, revenueInput === null ? undefined : parseInputMoney(revenueInput))
+    const next = inventorySaleAdjustment(input, newCurrent, revenueInput === null ? undefined : parseInputMoney(revenueInput))
     const { sold: newSold, revenue: newRevenue, realizedProfit: newProfit, listRevenue } = next
     return {
       invalidRevenue: newSold === 0 && newRevenue > 0,
@@ -423,6 +423,7 @@ export function InventoryScreen() {
       revenueNow: roundMoney(newRevenue - selectedEntry.revenue),
       profitNow: roundMoney(newProfit - selectedEntry.realizedProfit),
       listRevenue,
+      listSaleRevenue: next.listSaleRevenue,
       newRevenue,
       newProfit,
       isOverridden: revenueInput !== null && Math.abs(newRevenue - listRevenue) > 0.005,
@@ -584,7 +585,7 @@ export function InventoryScreen() {
                       showed "19 sold" — correct for the day, but one unit was
                       what actually just changed hands. */}
                   <div style={{
-                    display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8,
+                    display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', gap: 8,
                     padding: '9px 11px', borderRadius: 9, marginBottom: 8,
                     background: p.soldNow === 0 ? 'var(--color-surface)' : 'var(--color-primary-soft)',
                     border: `1px solid ${p.soldNow === 0 ? 'var(--color-border)' : 'var(--color-primary)'}`,
@@ -607,27 +608,18 @@ export function InventoryScreen() {
                         </span>
                       </span>
                     )}
-                  </div>
-
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 }}>
-                    {t('dayTotals')}
-                  </div>
-                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('previousSold')}</span><span style={s.fieldValue}>{formatQuantity(p.prevSold, selectedEntry.unit)}</span></div>
-                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('newSold')}</span><span style={s.fieldValue}>{formatQuantity(p.soldNow, selectedEntry.unit)}</span></div>
-                  {/* Editable: the shop often takes a different amount than
-                      the list price implies. Profit below is deliberately NOT
-                      editable — it always follows from this field. */}
-                  <div style={{ ...s.fieldRow, alignItems: 'center' }}>
-                    <span style={s.fieldLabel}>{t('expectedRevenue')}</span>
+                  {p.soldNow > 0 && (<>
+                  <div style={{ ...s.fieldRow, alignItems: 'center', width: '100%' }}>
+                    <span style={s.fieldLabel}>{t('saleAmount')}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <input
                         type="text"
                         inputMode="decimal"
-                        aria-label={t('expectedRevenue')}
+                        aria-label={t('saleAmount')}
                         aria-invalid={p.invalidRevenue}
-                        value={revenueInput ?? formatInputMoney(String(p.listRevenue))}
+                        value={revenueInput ?? formatInputMoney(String(p.listSaleRevenue))}
                         onChange={(e) => setRevenueInput(formatInputMoney(e.target.value))}
-                        onFocus={() => { if (revenueInput === null) setRevenueInput(formatInputMoney(String(p.listRevenue))) }}
+                        onFocus={() => { if (revenueInput === null) setRevenueInput(formatInputMoney(String(p.listSaleRevenue))) }}
                         style={{
                           ...s.modalInput,
                           width: 130,
@@ -650,6 +642,15 @@ export function InventoryScreen() {
                       )}
                     </div>
                   </div>
+                  </>)}
+                  </div>
+
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 }}>
+                    {t('dayTotals')}
+                  </div>
+                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('previousSold')}</span><span style={s.fieldValue}>{formatQuantity(p.prevSold, selectedEntry.unit)}</span></div>
+                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('newSold')}</span><span style={s.fieldValue}>{formatQuantity(p.soldNow, selectedEntry.unit)}</span></div>
+                  <div style={s.fieldRow}><span style={s.fieldLabel}>{t('expectedRevenue')}</span><span style={s.fieldValue}>{formatMoney(p.newRevenue)}</span></div>
                   <div style={s.fieldRow}><span style={s.fieldLabel}>{t('expectedProfit')}</span><span style={s.fieldValue}>{formatMoney(p.newProfit)}</span></div>
                 </div>
               )}

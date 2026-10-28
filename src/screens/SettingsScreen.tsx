@@ -1,3 +1,4 @@
+import { subscriptionPlans, subscriptionPriceLines, subscriptionBotUrl } from '../utils/subscriptionPlans'
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useAuthStore } from '../store/authStore'
 import { useAppStore } from '../store/appStore'
@@ -650,7 +651,7 @@ export function SettingsScreen() {
           <div onClick={(e) => e.stopPropagation()} style={{
             width: '100%', maxWidth: 420,
             background: 'var(--color-surface)', borderRadius: 16,
-            border: '1px solid var(--color-border)', overflow: 'hidden',
+            border: '1px solid var(--color-border)', overflowY: 'auto', maxHeight: '90vh',
           }}>
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -701,18 +702,8 @@ export function SettingsScreen() {
 
               {/* Plan Cards: Bor & Pro */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {[
-                  {
-                    key: 'bor', label: t('planBor'), price: t('planBorPrice'),
-                    color: '#10B981', bg: 'rgba(16,185,129,0.08)',
-                    features: ['Ombor hisobi', 'Statistika', 'Savdo', '100 tagacha mahsulot'],
-                  },
-                  {
-                    key: 'pro', label: t('planPro'), price: t('planProPrice'),
-                    color: '#7C3AED', bg: 'rgba(124,58,237,0.08)',
-                    features: ['Ombor hisobi', 'Statistika', 'Savdo', 'Cheksiz mahsulotlar'],
-                  },
-                ].map((plan) => {
+                {subscriptionPlans.map((item) => {
+                  const plan = { ...item, label: t(item.key === 'tekin' ? 'planFree' : item.key === 'bor' ? 'planBor' : 'planPro'), price: subscriptionPriceLines(item.prices, getLanguage()), bg: `${item.color}15`, features: getLanguage() === 'ru' ? item.ru : item.uz }
                   const isActive = userTier === plan.key
                   const isSuperAdmin = user?.role === 'superAdmin'
                   return (
@@ -732,7 +723,7 @@ export function SettingsScreen() {
                         </div>
                       )}
                       <div style={{ fontSize: 16, fontWeight: 700, color: plan.color }}>{plan.label}</div>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: plan.color, marginTop: 4, marginBottom: 10 }}>
+                      <div style={{ fontSize: 14, lineHeight: 1.7, fontWeight: 700, color: plan.color, marginTop: 4, marginBottom: 10 }}>
                         {plan.price}
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
@@ -742,32 +733,9 @@ export function SettingsScreen() {
                           </div>
                         ))}
                       </div>
-                      {!isActive && plan.key === 'bor' && (
-                        <button
-                          onClick={() => window.open('https://t.me/dilbek7011', '_blank')}
-                          style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                            padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                            border: 'none', background: `${plan.color}15`,
-                            color: plan.color, cursor: 'pointer',
-                          }}
-                        >
-                          <MessageCircle size={14} />
-                          {t('contactAdmin')}
-                        </button>
-                      )}
-                      {!isActive && plan.key === 'pro' && !isSuperAdmin && (
-                        <button
-                          onClick={() => window.open('https://t.me/dilbek7011', '_blank')}
-                          style={{
-                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                            padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                            border: `1px solid ${plan.color}40`, background: `${plan.color}15`,
-                            color: plan.color, cursor: 'pointer',
-                          }}
-                        >
-                          <MessageCircle size={14} />
-                          {t('contactAdmin')}
+                      {plan.key !== 'tekin' && !isSuperAdmin && (
+                        <button onClick={() => { window.electronAPI ? void window.electronAPI.openExternal(subscriptionBotUrl).catch(() => useAppStore.getState().showToast(t('registrationPhoneOpenError'), 'error')) : window.open(subscriptionBotUrl, '_blank', 'noopener,noreferrer') }} className="btn btn-primary" style={{ width: '100%' }}>
+                          <MessageCircle size={14} /> {t('buySubscription')}
                         </button>
                       )}
                       {plan.key === 'pro' && isSuperAdmin && (

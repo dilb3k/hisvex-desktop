@@ -1,3 +1,4 @@
+import { findProductByBarcode } from '../utils/barcodes'
 import { QuantityStack } from '../components/QuantityStack'
 import { sumQuantities, formatDecimal, formatInputMoney, parseInputMoney } from '../utils/quantities'
 import { syncNow } from '../store/syncEngine'
@@ -392,7 +393,7 @@ export function SalesScreen() {
     const code = barcodeInput.trim()
     if (!code) return
 
-    const product = products.find(p => p.barcodes?.includes(code))
+    const product = findProductByBarcode(products, code)
     if (!product) {
       setBarcodeError(t('barcodeNotFound'))
       setBarcodeInput('')
@@ -420,7 +421,7 @@ export function SalesScreen() {
       return
     }
 
-    setCart(prev => ({ ...prev, [key]: roundQty((prev[key] || 0) + stepFor(unit)) }))
+    setCart(prev => ({ ...prev, [key]: roundQty(Math.min((prev[key] || 0) + stepFor(unit), invItem.currentQuantity)) }))
     setBarcodeInput('')
     setBarcodeError(null)
     showToast(product.name, 'success')

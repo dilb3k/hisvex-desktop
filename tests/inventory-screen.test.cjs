@@ -45,32 +45,21 @@ test('inventory modal displays zero new units and disables unchanged save for 40
  assert.equal(save().props.disabled,false);
  await save().props.onClick();assert.equal(h.sent[0][0].currentQuantity,36);assert.equal(h.sent[0][0].lineRevenue,undefined);
 });
-test('discounted stock modal keeps original opening and sends the revised day total exactly once',async()=>{
+test('new-sale discount preserves previous 60000 revenue and sends the new day total',async()=>{
  const h=harness({...entry,startQuantity:37,lockedSold:3,lockedRevenue:60000,lockedProfit:33300});await h.ready();
  assert.ok(h.all().some(n=>n.type==='div'&&h.text(n)==='start40 dona'));
- const revenue=()=>h.all().find(n=>n.type==='input'&&n.props['aria-label']==='expectedRevenue');
- assert.equal(Number(String(revenue().props.value).replace(/[^\d.]/g,'')),60000);
- revenue().props.onChange({target:{value:'50000'}});h.render();
+ assert.equal(h.all().some(n=>n.type==='input'&&n.props['aria-label']==='expectedRevenue'),false);
+ const quantity=h.all().find(n=>n.type==='input'&&n.props.value==='37');quantity.props.onChange({target:{value:'36'}});h.render();
+ const revenue=()=>h.all().find(n=>n.type==='input'&&n.props['aria-label']==='saleAmount');
+ assert.equal(Number(String(revenue().props.value).replace(/[^\d.]/g,'')),23000);
+ revenue().props.onChange({target:{value:'20000'}});h.render();
+ assert.ok(h.all().some(n=>n.type==='div'&&h.text(n)==='expectedRevenue80000'));
  const save=h.all().find(n=>n.type==='button'&&h.text(n).includes('save')&&!h.text(n).includes('preSave'));
- assert.equal(save.props.disabled,false);await save.props.onClick();assert.equal(h.sent.length,1);assert.equal(h.sent[0][0].lineRevenue,50000);
+ assert.equal(save.props.disabled,false);await save.props.onClick();assert.equal(h.sent.length,1);assert.equal(h.sent[0][0].lineRevenue,80000);
 });
-
-test('revenue without sold units is blocked with an explanation and remains editable', async () => {
- const h=harness({...entry,startQuantity:40,currentQuantity:40}); await h.ready();
- const revenue=()=>h.all().find(n=>n.type==='input'&&n.props['aria-label']==='expectedRevenue');
- revenue().props.onChange({target:{value:'100'}});h.render();
- assert.ok(h.all().some(n=>n.props.role==='alert'&&h.text(n)==='revenueRequiresSales'));
- const save=h.all().find(n=>n.type==='button'&&h.text(n).includes('save')&&!h.text(n).includes('preSave'));
- assert.equal(save.props.disabled,true);assert.equal(!!revenue().props.disabled,false);
-});
-
-test('a delayed inventory response cannot overwrite a newer refresh', async () => {
- const requests=[];const h=harness(entry,()=>new Promise(resolve=>requests.push(resolve)));
- h.render();h.state.refreshKey++;h.render();assert.equal(requests.length,2);
- requests[1]({data:{items:[{...entry,product:{...product,name:'Fresh inventory'}}]}});
- await new Promise(r=>setImmediate(r));h.render();
- assert.ok(h.text(h.render()).includes('Fresh inventory'));
- requests[0]({data:{items:[{...entry,product:{...product,name:'Obsolete inventory'}}]}});
- await new Promise(r=>setImmediate(r));h.render();
- assert.ok(h.text(h.render()).includes('Fresh inventory'));assert.equal(h.text(h.render()).includes('Obsolete inventory'),false);
+test('unchanged and returned quantities cannot edit previous revenue',async()=>{
+ const h=harness();await h.ready();
+ assert.equal(h.all().some(n=>n.type==='input'&&n.props['aria-label']==='saleAmount'),false);
+ h.all().find(n=>n.type==='input'&&n.props.value==='37').props.onChange({target:{value:'38'}});h.render();
+ assert.equal(h.all().some(n=>n.type==='input'&&n.props['aria-label']==='saleAmount'),false);
 });

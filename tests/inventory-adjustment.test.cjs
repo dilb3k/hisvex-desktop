@@ -46,3 +46,19 @@ test('inventory total opening stock includes earlier negotiated-price sales', ()
   const totals = getInventoryTotals([item]);
   assert.equal(totals.start, 40); assert.equal(totals.current, 37); assert.equal(totals.sold, 3);
 });
+
+const { inventorySaleAdjustment: saleAdjust } = loadSource(`${base}/inventoryAdjustment.ts`);
+test('new sale amount preserves old discounted sales and cost across repeated saves', () => {
+ const first = {...entry, ...adjust(entry,37,60000)};
+ const next = saleAdjust(first,36,20000);
+ assert.equal(next.revenue,80000); assert.equal(next.realizedProfit,44400);
+ assert.equal(next.listSaleRevenue,23000); assert.equal(next.saleRevenue,20000);
+ const again=saleAdjust({...first,...next},35,18000);
+ assert.equal(again.revenue,98000); assert.equal(again.realizedProfit,53500);
+ assert.equal(saleAdjust(first,37,20000).revenue,60000);
+ assert.equal(saleAdjust(entry,38,20000).revenue,46000);
+});
+test('a zero-price new sale only removes this sales revenue, never earlier revenue', () => {
+ const next = saleAdjust(entry,36,0);
+ assert.equal(next.revenue,69000); assert.equal(next.realizedProfit,33400);
+});
